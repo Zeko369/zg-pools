@@ -1,7 +1,67 @@
-import { generateObject } from "ai";
+import { generateObject, NoObjectGeneratedError } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { getWeekDates, type DayInfo } from "./pools";
+
+const PARSER_MODEL = "gpt-5-nano";
+const GENERATE_OBJECT_MAX_ATTEMPTS = 3;
+
+const TextFromStringOrObjectSchema = z.preprocess((value) => {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value && typeof value === "object") {
+    if ("alert" in value && typeof value.alert === "string") {
+      return value.alert;
+    }
+
+    if ("message" in value && typeof value.message === "string") {
+      return value.message;
+    }
+
+    if ("text" in value && typeof value.text === "string") {
+      return value.text;
+    }
+  }
+
+  return value;
+}, z.string());
+
+async function generateStructuredObject<T>({
+  schema,
+  prompt,
+}: {
+  schema: z.ZodType<T>;
+  prompt: string;
+}): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= GENERATE_OBJECT_MAX_ATTEMPTS; attempt++) {
+    try {
+      const { object } = await generateObject({
+        model: openai(PARSER_MODEL),
+        schema,
+        prompt,
+      });
+
+      return object;
+    } catch (error) {
+      lastError = error;
+
+      if (
+        !NoObjectGeneratedError.isInstance(error) ||
+        attempt === GENERATE_OBJECT_MAX_ATTEMPTS
+      ) {
+        throw error;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, attempt * 250));
+    }
+  }
+
+  throw lastError;
+}
 
 // ============================================
 // SHARED TYPES
@@ -61,7 +121,7 @@ const WeeklyScheduleSchema = z.object({
     "Default schedule for holidays (from Blagdan row in table, if present)",
   ),
   notices: z
-    .array(z.string())
+    .array(TextFromStringOrObjectSchema)
     .describe(
       "General informational notices about the pool: entry rules, programs, facilities. No external links or contact info.",
     ),
@@ -122,7 +182,7 @@ const OverridesSchema = z.object({
       "All schedule overrides found in notices, warnings, and announcements",
     ),
   alerts: z
-    .array(z.string())
+    .array(TextFromStringOrObjectSchema)
     .describe(
       "URGENT notices: closures, out-of-service equipment, holiday closures with dates",
     ),
@@ -203,8 +263,7 @@ async function extractWeeklySchedule(
   poolName: string,
   rawContent: string,
 ): Promise<WeeklySchedule> {
-  const { object } = await generateObject({
-    model: openai("gpt-4.1-mini"),
+  return generateStructuredObject({
     schema: WeeklyScheduleSchema,
     prompt: `You are extracting the REGULAR weekly schedule from a swimming pool's HTML page in Zagreb, Croatia.
 
@@ -250,8 +309,6 @@ No external links, phone numbers, or emails.
 === CONTENT TO ANALYZE ===
 ${rawContent}`,
   });
-
-  return object;
 }
 
 // ============================================
@@ -262,8 +319,7 @@ async function extractOverrides(
   poolName: string,
   rawContent: string,
 ): Promise<Overrides> {
-  const { object } = await generateObject({
-    model: openai("gpt-4.1-mini"),
+  return generateStructuredObject({
     schema: OverridesSchema,
     prompt: `You are extracting SCHEDULE OVERRIDES from a swimming pool's HTML page in Zagreb, Croatia.
 
@@ -327,8 +383,6 @@ The merge step will handle matching to actual dates.
 === CONTENT TO ANALYZE ===
 ${rawContent}`,
   });
-
-  return object;
 }
 
 // ============================================
