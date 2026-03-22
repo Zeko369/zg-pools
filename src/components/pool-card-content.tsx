@@ -24,6 +24,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { useViewMode } from "@/components/view-mode";
+import { TodaySchedule } from "@/components/today-schedule";
 import type { PoolData } from "@/lib/data";
 import type { PoolType, WeekSchedule } from "@/lib/ai";
 
@@ -116,6 +118,7 @@ function ScheduleTable({
 
 export function PoolCardContent({ data }: PoolCardContentProps) {
   const { pool, availability, fetchedAt } = data;
+  const { viewMode } = useViewMode();
   const [noticesOpen, setNoticesOpen] = useState(false);
   const [selectedWeek, setSelectedWeek] = useState<"current" | "next">(
     "current",
@@ -162,22 +165,24 @@ export function PoolCardContent({ data }: PoolCardContentProps) {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-2">
-          <div className="flex gap-1">
-            <Button
-              variant={selectedWeek === "current" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedWeek("current")}
-            >
-              Ovaj tjedan
-            </Button>
-            <Button
-              variant={selectedWeek === "next" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedWeek("next")}
-            >
-              Sljedeći tjedan
-            </Button>
-          </div>
+          {viewMode === "week" && (
+            <div className="flex gap-1">
+              <Button
+                variant={selectedWeek === "current" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedWeek("current")}
+              >
+                Ovaj tjedan
+              </Button>
+              <Button
+                variant={selectedWeek === "next" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedWeek("next")}
+              >
+                Sljedeći tjedan
+              </Button>
+            </div>
+          )}
           <div className="flex gap-1 ml-auto">
             <Button
               variant={poolFilter === "all" ? "secondary" : "ghost"}
@@ -203,11 +208,19 @@ export function PoolCardContent({ data }: PoolCardContentProps) {
           </div>
         </div>
 
-        <div className="text-xs text-muted-foreground">
-          {currentSchedule.weekStart} - {currentSchedule.weekEnd}
-        </div>
-
-        <ScheduleTable schedule={currentSchedule} poolFilter={poolFilter} />
+        {viewMode === "today" ? (
+          <TodaySchedule
+            schedule={availability.currentWeek}
+            poolFilter={poolFilter}
+          />
+        ) : (
+          <>
+            <div className="text-xs text-muted-foreground">
+              {currentSchedule.weekStart} - {currentSchedule.weekEnd}
+            </div>
+            <ScheduleTable schedule={currentSchedule} poolFilter={poolFilter} />
+          </>
+        )}
 
         {hasNotices && (
           <Collapsible open={noticesOpen} onOpenChange={setNoticesOpen}>
