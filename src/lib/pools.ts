@@ -22,6 +22,11 @@ export const POOLS: Pool[] = [
     name: "Zimsko Plivalište Mladost",
     url: "https://www.sportskiobjekti.hr/zimsko-plivaliste-mladost/1369?tab=1493",
   },
+  {
+    id: "bazenski-kompleks-svetice",
+    name: "Bazenski Kompleks Svetice",
+    url: "https://www.sportskiobjekti.hr/sportsko-rekreacijski-centar-svetice-i-bazenski-kompleks-svetice/1358?tab=1366",
+  },
 ];
 
 export async function scrapePoolContent(url: string): Promise<string> {
