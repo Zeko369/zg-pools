@@ -69,6 +69,14 @@ const hr = {
   chooseFacility: "Odaberite objekt",
   allFacilities: "Svi objekti",
   findPool: "Pronađi bazen",
+  favoritePools: "Omiljeni bazeni",
+  otherPools: "Ostali bazeni",
+  addFavorite: "Dodaj u omiljene:",
+  removeFavorite: "Ukloni iz omiljenih:",
+  allFailed: "Rasporedi trenutačno nisu dostupni",
+  retry: "Pokušaj ponovno",
+  calendarSwipe: "Pomakni lijevo ili desno za ostale dane",
+  jumpToday: "Prikaži danas",
   facilities: (count: number) =>
     `${count} ${count === 1 ? "objekt" : count > 1 && count < 5 ? "objekta" : "objekata"}`,
   showAll: "Prikaži sve",
@@ -163,6 +171,14 @@ const en: typeof hr = {
   chooseFacility: "Choose a facility",
   allFacilities: "All facilities",
   findPool: "Find a pool",
+  favoritePools: "Favorite pools",
+  otherPools: "Other pools",
+  addFavorite: "Add to favorites:",
+  removeFavorite: "Remove from favorites:",
+  allFailed: "Schedules are currently unavailable",
+  retry: "Try again",
+  calendarSwipe: "Swipe left or right for more days",
+  jumpToday: "Jump to today",
   facilities: (count) => `${count} ${count === 1 ? "facility" : "facilities"}`,
   showAll: "Show all",
   today: "Today",
@@ -238,12 +254,17 @@ export function weekday(
 }
 
 export function weekLabel(start: string, end: string, language: Language) {
-  return new Intl.DateTimeFormat(LOCALES[language], {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: TIME_ZONE,
-  }).formatRange(parseDate(start), parseDate(end));
+  return (
+    new Intl.DateTimeFormat(LOCALES[language], {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: TIME_ZONE,
+    })
+      .formatRange(parseDate(start), parseDate(end))
+      // ICU versions use different thin spaces on Node and in browsers.
+      .replace(/\s+/g, " ")
+  );
 }
 
 export function sourceText(

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   ArrowUpRight,
   CalendarDays,
@@ -11,7 +12,7 @@ import {
   Layers,
   List,
   RefreshCw,
-  Search,
+  Star,
   Waves,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -34,35 +35,50 @@ import { LanguageSwitcher } from "./language-switcher";
 
 import { CalendarView, type CalendarSlot } from "./calendar-view";
 import { poolColorStyle } from "@/lib/pool-colors";
+import { useFavoritePools } from "./use-favorite-pools";
+import { FavoriteButton } from "./favorite-button";
 
 type Mode = "calendar" | "agenda";
-let lastResults: PoolResult[] | null = null;
-let lastLoadedAt = 0;
-let pending: Promise<PoolResult[]> | null = null;
-function loadResults() {
-  if (lastResults && Date.now() - lastLoadedAt < 60_000)
-    return Promise.resolve(lastResults);
-  return (pending ??= fetch("/api/pools", { cache: "no-store" })
+const scheduleCache = new Map<
+  string,
+  { result: PoolResult; loadedAt: number }
+>();
+const pending = new Map<string, Promise<PoolResult>>();
+function rememberResults(results: PoolResult[]) {
+  for (const result of results) {
+    if (result.data)
+      scheduleCache.set(result.pool.id, { result, loadedAt: Date.now() });
+  }
+}
+function loadResult(pool: Pool): Promise<PoolResult> {
+  const cached = scheduleCache.get(pool.id);
+  if (cached && Date.now() - cached.loadedAt < 60_000)
+    return Promise.resolve(cached.result);
+  const active = pending.get(pool.id);
+  if (active) return active;
+  const request = fetch(`/api/pools/${pool.id}`, { cache: "no-store" })
     .then(async (response) => {
       const body = await response.json();
-      if (!Array.isArray(body.results))
-        throw new Error("Dohvat rasporeda nije uspio.");
-      lastResults = body.results;
-      lastLoadedAt = Date.now();
-      return lastResults!;
+      const result = body.results?.find(
+        (item: PoolResult) => item.pool.id === pool.id,
+      );
+      if (!result) throw new Error("Schedule request failed");
+      rememberResults([result]);
+      return result as PoolResult;
     })
-    .finally(() => {
-      pending = null;
-    }));
+    .catch(() => ({ pool, data: null, error: "unavailable" }))
+    .finally(() => pending.delete(pool.id));
+  pending.set(pool.id, request);
+  return request;
 }
 const NAV = [
+  { mode: "agenda", href: "/agenda", label: "agenda", Icon: List },
   {
     mode: "calendar",
     href: "/calendar",
     label: "calendar",
     Icon: CalendarDays,
   },
-  { mode: "agenda", href: "/agenda", label: "agenda", Icon: List },
 ] as const;
 export function PoolDashboard({
   catalog,
@@ -81,16 +97,39 @@ export function PoolDashboard({
   const [today, setToday] = useState(initialToday);
   const [results, setResults] = useState<PoolResult[]>([]),
     [loading, setLoading] = useState(true);
-  const [weekIndex, setWeekIndex] = useState(0),
-    [selectedPool, setSelectedPool] = useState(catalog[0].id);
-  const [type, setType] = useState<PoolType | "all">("olympic"),
-    [search, setSearch] = useState("");
-  const [selectedDate, setSelectedDate] = useState(today),
-    [notice, setNotice] = useState<NoticeKey | null>(null);
+  const params = useSearchParams();
+  const { favorites, toggleFavorite } = useFavoritePools(catalog);
+  const orderedCatalog = [...catalog].sort(
+    (a, b) =>
+      Number(favorites.includes(b.id)) - Number(favorites.includes(a.id)),
+  );
+  const weekIndex = params.get("week") === "next" ? 1 : 0;
+  const selectedPool =
+    params.get("pool") === "all" ||
+    catalog.some((p) => p.id === params.get("pool"))
+      ? params.get("pool")!
+      : orderedCatalog[0].id;
+  const requestedType = params.get("type");
+  const type: PoolType | "all" = [
+    "olympic",
+    "small",
+    "children",
+    "diving",
+    "all",
+  ].includes(requestedType ?? "")
+    ? (requestedType as PoolType | "all")
+    : "olympic";
+  const selectedDate = params.get("date") ?? today;
+  const [notice, setNotice] = useState<NoticeKey | null>(null);
+  function updateParams(values: Record<string, string>) {
+    const next = new URLSearchParams(params.toString());
+    for (const [key, value] of Object.entries(values)) next.set(key, value);
+    window.history.pushState(null, "", `?${next}`);
+  }
   const [selectedSlot, setSelectedSlot] = useState<CalendarSlot | null>(null);
   const [highlightedPool, setHighlightedPool] = useState<string | null>(null);
   function selectPool(id: string) {
-    setSelectedPool(id);
+    updateParams({ pool: id });
     setSelectedSlot(null);
     setHighlightedPool(null);
   }
@@ -101,19 +140,20 @@ export function PoolDashboard({
     function start() {
       if (document.visibilityState !== "visible" || started) return;
       started = true;
-      loadResults()
-        .then((data) => {
+      Promise.all(
+        catalog.map(async (pool) => {
+          const result = await loadResult(pool);
           if (mounted) {
-            setResults(data);
+            setResults((previous) => [
+              ...previous.filter((item) => item.pool.id !== pool.id),
+              result,
+            ]);
             setToday(zagrebDate());
           }
-        })
-        .catch(() => {
-          if (mounted) setNotice("loadFailed");
-        })
-        .finally(() => {
-          if (mounted) setLoading(false);
-        });
+        }),
+      ).finally(() => {
+        if (mounted) setLoading(false);
+      });
     }
     start();
     document.addEventListener("visibilitychange", start);
@@ -132,8 +172,7 @@ export function PoolDashboard({
         return;
       }
       const data = response.results;
-      lastResults = data;
-      lastLoadedAt = Date.now();
+      rememberResults(data);
       setResults(data);
       setSelectedSlot(null);
       setToday(zagrebDate());
@@ -187,32 +226,42 @@ export function PoolDashboard({
     : selected
       ? [selected]
       : [];
-  const visible = catalog.filter(
-    (p) =>
-      !hiddenPools.includes(p.id) &&
-      p.name.toLocaleLowerCase("hr").includes(search.toLocaleLowerCase("hr")),
-  );
+  const visible = orderedCatalog.filter((p) => !hiddenPools.includes(p.id));
+  async function retryFailed() {
+    setLoading(true);
+    await Promise.all(
+      catalog
+        .filter((pool) => !results.find((r) => r.pool.id === pool.id)?.data)
+        .map(async (pool) => {
+          const result = await loadResult(pool);
+          setResults((previous) => [
+            ...previous.filter((item) => item.pool.id !== pool.id),
+            result,
+          ]);
+        }),
+    );
+    setLoading(false);
+  }
   const fetched = results
     .flatMap((r) => (r.data ? [r.data.fetchedAt] : []))
     .sort()[0];
   const failures = results.filter((r) => !r.data || r.data.stale);
   const dateLabel = weekLabel(week.monday, week.sunday, language);
   function changeWeek(index: number) {
-    setWeekIndex(index);
+    updateParams({
+      week: index ? "next" : "current",
+      date: index
+        ? parseDate(liveWeeks.nextWeek.monday).toISOString().slice(0, 10)
+        : today,
+    });
     setSelectedSlot(null);
     setHighlightedPool(null);
-    if (mode === "agenda")
-      setSelectedDate(
-        parseDate((index ? liveWeeks.nextWeek : liveWeeks.currentWeek).monday)
-          .toISOString()
-          .slice(0, 10),
-      );
   }
   return (
     <div className={`pool-app view-${mode}`}>
       <header className="app-header">
         <div className="header-inner">
-          <Link href="/calendar" prefetch={false} className="brand">
+          <Link href="/agenda" prefetch={false} className="brand">
             <img
               className="brand-symbol"
               src="/favicon-options/wave-72.png"
@@ -225,19 +274,6 @@ export function PoolDashboard({
               <span>Zagreb</span>
             </span>
           </Link>
-          <nav aria-label={t.scheduleNavigation}>
-            {NAV.map(({ href, label, mode: item, Icon }) => (
-              <Link
-                prefetch={false}
-                key={item}
-                href={href}
-                aria-current={mode === item ? "page" : undefined}
-              >
-                <Icon size={16} />
-                {t[label]}
-              </Link>
-            ))}
-          </nav>
           <div className="header-actions">
             <LanguageSwitcher />
             {canRefresh && (
@@ -256,33 +292,7 @@ export function PoolDashboard({
         </div>
       </header>
       <main className="app-main">
-        <section className="page-intro">
-          <div>
-            <h1>{mode === "agenda" ? t.agenda : t.scheduleTitle}</h1>
-            <p>{mode === "agenda" ? t.agendaIntro : t.calendarIntro}</p>
-          </div>
-          <div className="intro-side">
-            <span className={`live-dot ${loading ? "pending" : ""}`} />
-            {loading
-              ? t.checking
-              : fetched
-                ? `${t.checked} ${new Date(fetched).toLocaleString(LOCALES[language], { timeZone: "Europe/Zagreb", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}`
-                : t.onDemand}
-          </div>
-        </section>
-        {notice && (
-          <div className="status-callout" role="status">
-            <Info size={16} />
-            {t[notice]}
-          </div>
-        )}
-        {!loading && failures.length > 0 && (
-          <div className="status-callout warning" role="status">
-            <Info size={16} />
-            {t.failures(failures.length)}
-          </div>
-        )}
-        <div className="schedule-toolbar">
+        <div className="schedule-navigation">
           <div className="date-navigation">
             <Button
               variant="outline"
@@ -307,6 +317,69 @@ export function PoolDashboard({
               <ChevronRight />
             </Button>
           </div>
+          <nav className="view-navigation" aria-label={t.scheduleNavigation}>
+            {NAV.map(({ href, label, mode: item, Icon }) => (
+              <Link
+                prefetch={false}
+                key={item}
+                href={`${href}?${params.toString()}`}
+                aria-current={mode === item ? "page" : undefined}
+              >
+                <Icon size={16} />
+                {t[label]}
+              </Link>
+            ))}
+          </nav>
+        </div>
+        <section className="page-intro">
+          <div>
+            <h1>{mode === "agenda" ? t.agenda : t.scheduleTitle}</h1>
+            <p>{mode === "agenda" ? t.agendaIntro : t.calendarIntro}</p>
+          </div>
+          <div className="intro-side">
+            <span className={`live-dot ${loading ? "pending" : ""}`} />
+            {loading
+              ? t.checking
+              : fetched
+                ? `${t.checked} ${new Date(fetched).toLocaleString(LOCALES[language], { timeZone: "Europe/Zagreb", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}`
+                : t.onDemand}
+          </div>
+        </section>
+        {notice && (
+          <div className="status-callout" role="status">
+            <Info size={16} />
+            {t[notice]}
+          </div>
+        )}
+        {!loading && failures.length > 0 && (
+          <details className="schedule-errors">
+            <summary>
+              <Info size={16} />
+              {results.every((r) => !r.data)
+                ? t.allFailed
+                : t.failures(failures.length)}
+            </summary>
+            <div className="error-sources">
+              <p>{t.sourceUnavailable}</p>
+              {failures.map(({ pool }) => (
+                <a
+                  key={pool.id}
+                  href={pool.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {pool.shortName} <ExternalLink size={12} />
+                </a>
+              ))}
+              {failures.some((r) => !r.data) && (
+                <Button variant="outline" size="sm" onClick={retryFailed}>
+                  {t.retry}
+                </Button>
+              )}
+            </div>
+          </details>
+        )}
+        <div className="schedule-toolbar">
           <div className="type-switch" aria-label={t.poolType}>
             {(["olympic", "small", "children", "diving", "all"] as const).map(
               (value) => (
@@ -314,7 +387,7 @@ export function PoolDashboard({
                   key={value}
                   aria-pressed={type === value}
                   onClick={() => {
-                    setType(value);
+                    updateParams({ type: value });
                     setSelectedSlot(null);
                   }}
                 >
@@ -340,7 +413,7 @@ export function PoolDashboard({
               <Layers size={14} />
               {t.allFacilities}
             </button>
-            {catalog.map((pool) => (
+            {orderedCatalog.map((pool) => (
               <button
                 aria-pressed={pool.id === selectedPool}
                 key={pool.id}
@@ -349,26 +422,13 @@ export function PoolDashboard({
               >
                 <i className="color-dot" style={poolColorStyle(pool.color)} />
                 {pool.shortName}
+                {favorites.includes(pool.id) && (
+                  <Star size={12} fill="currentColor" aria-hidden="true" />
+                )}
               </button>
             ))}
           </div>
-        ) : (
-          <div className="filter-toolbar">
-            <label className="search-field">
-              <Search size={17} />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={`${t.findPool}…`}
-                aria-label={t.findPool}
-              />
-            </label>
-            <span>{t.facilities(visible.length)}</span>
-            {hiddenPools.length > 0 && (
-              <button onClick={() => setHiddenPools([])}>{t.showAll}</button>
-            )}
-          </div>
-        )}
+        ) : null}
         {mode === "agenda" && (
           <div className="agenda-dates">
             {week.days.map((info) => {
@@ -377,7 +437,7 @@ export function PoolDashboard({
                 <button
                   key={iso}
                   aria-pressed={activeDate === iso}
-                  onClick={() => setSelectedDate(iso)}
+                  onClick={() => updateParams({ date: iso })}
                 >
                   <span>{weekday(info.date, language, "short")}</span>
                   <b>{info.date.slice(0, 2)}</b>
@@ -403,6 +463,7 @@ export function PoolDashboard({
               week={week}
               type={type}
               today={today}
+              focusDate={activeDate}
               loading={loading}
             />
           ) : (
@@ -412,6 +473,8 @@ export function PoolDashboard({
               date={activeDate.split("-").reverse().join(".")}
               loading={loading}
               type={type}
+              favorites={favorites}
+              onToggleFavorite={toggleFavorite}
             />
           )}
           {mode === "calendar" && (
@@ -425,7 +488,7 @@ export function PoolDashboard({
                 </span>
               </div>
               <div className="pool-source-list">
-                {catalog.map((pool) => {
+                {orderedCatalog.map((pool) => {
                   const result = results.find((r) => r.pool.id === pool.id);
                   const day = dayOf(
                     result,
@@ -489,6 +552,11 @@ export function PoolDashboard({
                           </span>
                         </button>
                       )}
+                      <FavoriteButton
+                        pool={pool}
+                        favorite={favorites.includes(pool.id)}
+                        onToggle={() => toggleFavorite(pool.id)}
+                      />
                       <button
                         className="isolate-pool"
                         aria-label={`${t.isolate} ${pool.shortName}`}
@@ -554,27 +622,6 @@ export function PoolDashboard({
             </aside>
           )}
         </div>
-        {mode !== "calendar" && (
-          <div className="pool-visibility">
-            <span>{t.facilityVisibility}</span>
-            {catalog.map((pool) => (
-              <label key={pool.id}>
-                <input
-                  type="checkbox"
-                  checked={!hiddenPools.includes(pool.id)}
-                  onChange={() =>
-                    setHiddenPools((current) =>
-                      current.includes(pool.id)
-                        ? current.filter((id) => id !== pool.id)
-                        : [...current, pool.id],
-                    )
-                  }
-                />
-                {pool.shortName}
-              </label>
-            ))}
-          </div>
-        )}
         {mode !== "calendar" &&
           results.some((r) => r.data?.availability.alerts.length) && (
             <section className="notices-section">

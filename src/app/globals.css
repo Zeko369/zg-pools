@@ -1921,3 +1921,210 @@ input:focus-visible {
   > small {
   display: none;
 }
+
+/* Schedule navigation stays close to the dates on every screen. */
+.schedule-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding-top: 28px;
+}
+.view-navigation {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 9px;
+  background: var(--muted);
+}
+.view-navigation a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--muted-ink);
+  border-radius: 6px;
+}
+.view-navigation a[aria-current] {
+  color: var(--ink);
+  background: var(--background);
+  box-shadow: 0 1px 4px #10234312;
+}
+.page-intro,
+.view-agenda .page-intro {
+  padding: 28px 0 24px;
+}
+.page-intro h1 {
+  font-size: 32px;
+  letter-spacing: -1px;
+  margin-bottom: 8px;
+}
+.schedule-toolbar {
+  justify-content: flex-end;
+}
+.favorite-button {
+  color: var(--muted-ink);
+  flex: none;
+}
+.favorite-button[aria-pressed="true"] {
+  color: #ad7b12;
+}
+.agenda-number {
+  padding-top: 0;
+}
+.agenda-group-heading {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted-ink);
+  padding: 22px 0 0;
+}
+.schedule-errors {
+  background: #fffaf1;
+  color: #7b673e;
+  border: 1px solid #efe2c7;
+  border-radius: 7px;
+  font-size: 12px;
+  margin-bottom: 20px;
+}
+.schedule-errors summary {
+  cursor: pointer;
+  padding: 12px 15px;
+}
+.schedule-errors summary svg {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+.error-sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 0 15px 15px;
+}
+.error-sources p {
+  width: 100%;
+}
+.error-sources a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: underline;
+}
+.calendar-inner {
+  min-width: var(--calendar-min-width, 720px);
+}
+.mobile-calendar-help {
+  display: none;
+}
+@media (max-width: 600px) {
+  .header-inner {
+    min-height: 64px;
+  }
+  .app-main {
+    padding: 0 16px;
+  }
+  .header-inner {
+    padding: 0 16px;
+  }
+  .schedule-navigation {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    padding-top: 18px;
+  }
+  .date-navigation button {
+    width: 40px;
+    height: 40px;
+  }
+  .view-navigation a {
+    flex: 1;
+    min-height: 40px;
+  }
+  .page-intro,
+  .view-agenda .page-intro {
+    padding: 22px 0 18px;
+  }
+  .page-intro h1 {
+    font-size: 25px;
+  }
+  .page-intro p {
+    font-size: 12px;
+  }
+  .schedule-toolbar {
+    margin-bottom: 16px;
+  }
+  .type-switch {
+    overflow-x: auto;
+  }
+  .type-switch button {
+    min-height: 40px;
+    white-space: nowrap;
+    padding: 8px;
+  }
+  .agenda-dates {
+    gap: 4px;
+    padding-bottom: 16px;
+  }
+  .agenda-dates button {
+    height: 66px;
+  }
+  .agenda-dates button > span {
+    font-size: 9px;
+  }
+  .agenda-dates button > small {
+    font-size: 9px;
+  }
+  .agenda-item {
+    grid-template-columns: 36px minmax(0, 1fr);
+    padding: 20px 0;
+    gap: 8px;
+  }
+  .agenda-title h2 {
+    font-size: 19px;
+  }
+  .agenda-hours {
+    padding-top: 6px;
+  }
+  .pool-tabs {
+    margin-right: -16px;
+  }
+  .calendar-inner {
+    min-width: max(var(--calendar-min-width), 1178px);
+  }
+  .calendar-scroll {
+    overscroll-behavior-x: contain;
+  }
+  .time-axis,
+  .time-zone {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: white;
+  }
+  .mobile-calendar-help {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted-ink);
+    font-size: 10px;
+  }
+  .mobile-calendar-help button {
+    color: #08685e;
+    min-height: 32px;
+    white-space: nowrap;
+  }
+  .pool-source-row {
+    min-width: 0;
+  }
+  .pool-source-row .favorite-button {
+    width: 32px;
+  }
+}

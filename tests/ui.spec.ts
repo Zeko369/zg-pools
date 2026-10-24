@@ -2,6 +2,15 @@ import { expect, test } from "@playwright/test";
 import { POOLS } from "../src/lib/pools";
 import { getWeekDates, type DayInfo } from "../src/lib/dates";
 import type { WeekSchedule } from "../src/lib/ai";
+const runtimeErrors: string[] = [];
+test.beforeEach(({ page }) => {
+  runtimeErrors.length = 0;
+  page.on("pageerror", (error) => runtimeErrors.push(error.message));
+});
+test.afterEach(() => {
+  expect(runtimeErrors).toEqual([]);
+});
+
 function fixture() {
   const weeks = getWeekDates();
   return {
@@ -55,7 +64,7 @@ function fixture() {
     })),
   };
 }
-test("hidden page does no extraction; visibility triggers just one request, never polling", async ({
+test("hidden page does no extraction; visibility triggers one request per pool, never polling", async ({
   page,
 }) => {
   let requests = 0;
@@ -68,7 +77,7 @@ test("hidden page does no extraction; visibility triggers just one request, neve
           : "hidden",
     });
   });
-  await page.route("**/api/pools", (route) => {
+  await page.route("**/api/pools/*", (route) => {
     requests++;
     return route.fulfill({ json: fixture() });
   });
@@ -82,16 +91,16 @@ test("hidden page does no extraction; visibility triggers just one request, neve
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await expect(page.locator(".swim-event").first()).toBeVisible();
-  expect(requests).toBe(1);
+  expect(requests).toBe(POOLS.length);
   await page.evaluate(() =>
     document.dispatchEvent(new Event("visibilitychange")),
   );
-  expect(requests).toBe(1);
+  expect(requests).toBe(POOLS.length);
 });
 test("calendar pool/type/week controls use real state and source URLs", async ({
   page,
 }) => {
-  await page.route("**/api/pools", (route) =>
+  await page.route("**/api/pools/*", (route) =>
     route.fulfill({ json: fixture() }),
   );
   await page.goto("/calendar");
@@ -122,32 +131,69 @@ test("calendar pool/type/week controls use real state and source URLs", async ({
   await expect(page.locator(".swim-event")).toHaveCount(0);
   await expect(page.locator(".no-event").first()).toContainText("Zatvoreno");
 });
-test("agenda switches date, searches pools, and handles empty searches", async ({
+test("agenda is the default, favorites persist first, and view links preserve URL selections", async ({
   page,
 }) => {
-  await page.route("**/api/pools", (route) =>
+  await page.route("**/api/pools/*", (route) =>
     route.fulfill({ json: fixture() }),
   );
-  await page.goto("/agenda");
-  await expect(page.locator(".time-pill").first()).toBeVisible();
-  await page.locator(".agenda-dates button").first().click();
-  await expect(page.locator(".agenda-dates button").first()).toHaveAttribute(
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/agenda$/);
+  await expect(page.locator(".agenda-item")).toHaveCount(8);
+  await expect(
+    page.getByRole("textbox", { name: "Pronađi bazen" }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Dodaj u omiljene: Jelkovec", exact: true })
+    .click();
+  await expect(page.locator(".agenda-item").first()).toHaveAttribute(
+    "data-pool-id",
+    "bazen-jelkovec",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Omiljeni bazeni", exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(page.locator(".agenda-item").first()).toHaveAttribute(
+    "data-pool-id",
+    "bazen-jelkovec",
+  );
+  await page
+    .getByRole("button", { name: "Sljedeći tjedan", exact: true })
+    .click();
+  await page.locator(".agenda-dates button").nth(2).click();
+  await page.getByRole("button", { name: "Mali bazen", exact: true }).click();
+  const selection = new URL(page.url()).search;
+  await page.getByRole("link", { name: "Kalendar", exact: true }).click();
+  await expect(page).toHaveURL(/\/calendar\?/);
+  expect(new URL(page.url()).search).toBe(selection);
+  await expect(page.locator(".pool-tabs button[aria-pressed=true]")).toHaveText(
+    "Jelkovec",
+  );
+  await page.getByRole("link", { name: "Dnevni pregled", exact: true }).click();
+  await expect(page.locator(".agenda-dates button").nth(2)).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  await page.getByRole("textbox", { name: "Pronađi bazen" }).fill("Jelkovec");
-  await expect(page.locator(".agenda-item")).toHaveCount(1);
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp("/calendar"));
+  await page.goForward();
+  await expect(page.locator(".agenda-dates button").nth(2)).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await page
-    .getByRole("textbox", { name: "Pronađi bazen" })
-    .fill("does not exist");
-  await expect(
-    page.getByText("Nema bazena za ovaj odabir", { exact: true }),
-  ).toBeVisible();
+    .getByRole("button", { name: "Ukloni iz omiljenih: Jelkovec", exact: true })
+    .click();
+  await expect(page.locator(".agenda-item").first()).toHaveAttribute(
+    "data-pool-id",
+    POOLS[0].id,
+  );
 });
 test("all-pool overlap shares colors with sidebar, filters facilities and shows details", async ({
   page,
 }) => {
-  await page.route("**/api/pools", (route) =>
+  await page.route("**/api/pools/*", (route) =>
     route.fulfill({ json: fixture() }),
   );
   await page.goto("/calendar");
@@ -228,12 +274,12 @@ test("all-pool overlap shares colors with sidebar, filters facilities and shows 
 test("comparison navigation is gone and its old URL redirects to calendar", async ({
   page,
 }) => {
-  await page.route("**/api/pools", (route) =>
+  await page.route("**/api/pools/*", (route) =>
     route.fulfill({ json: fixture() }),
   );
   await page.goto("/compare");
   await expect(page).toHaveURL(/\/calendar$/);
-  await expect(page.locator(".header-inner nav a")).toHaveCount(2);
+  await expect(page.locator(".view-navigation a")).toHaveCount(2);
   await expect(
     page.getByRole("link", { name: "Usporedba", exact: true }),
   ).toHaveCount(0);
@@ -242,7 +288,7 @@ test("the generated favicon replaces the Next icon and alternatives are download
   page,
   request,
 }) => {
-  await page.route("**/api/pools", (route) =>
+  await page.route("**/api/pools/*", (route) =>
     route.fulfill({ json: fixture() }),
   );
   await page.goto("/calendar");
@@ -263,7 +309,7 @@ test("the generated favicon replaces the Next icon and alternatives are download
 test("source failure is presented as unknown, preserves facilities and links", async ({
   page,
 }) => {
-  await page.route("**/api/pools", (route) =>
+  await page.route("**/api/pools/*", (route) =>
     route.fulfill({
       status: 503,
       json: {
@@ -277,7 +323,7 @@ test("source failure is presented as unknown, preserves facilities and links", a
   );
   await page.goto("/calendar");
   await expect(
-    page.getByText("8 rasporeda trebaju provjeru.", { exact: false }),
+    page.getByText("Rasporedi trenutačno nisu dostupni", { exact: false }),
   ).toBeVisible();
   await expect(page.locator(".pool-source-row")).toHaveCount(8);
   await expect(page.locator(".no-event").first()).toContainText(
@@ -309,7 +355,7 @@ test("API catalog/OpenAPI and validation paths do not need an extraction", async
 test("Iver has its official source and Šalata can show a seasonal closure", async ({
   page,
 }) => {
-  await page.route("**/api/pools", (route) =>
+  await page.route("**/api/pools/*", (route) =>
     route.fulfill({ json: fixture() }),
   );
   await page.goto("/calendar");
@@ -336,7 +382,7 @@ test("only the signed-in owner sees refresh; invalid keys fail and logout remove
   page,
   context,
 }) => {
-  await page.route("**/api/pools", (route) =>
+  await page.route("**/api/pools/*", (route) =>
     route.fulfill({ json: fixture() }),
   );
   await page.goto("/calendar");
@@ -358,7 +404,7 @@ test("only the signed-in owner sees refresh; invalid keys fail and logout remove
     .getByLabel("Ključ za osvježavanje")
     .fill("playwright-only-owner-key");
   await page.getByRole("button", { name: "Omogući osvježavanje" }).click();
-  await expect(page).toHaveURL(/\/calendar$/);
+  await expect(page).toHaveURL(/\/agenda$/);
   await expect(
     page.getByRole("button", { name: "Osvježi podatke", exact: true }),
   ).toBeEnabled();
@@ -373,7 +419,7 @@ test("only the signed-in owner sees refresh; invalid keys fail and logout remove
     page.getByText("Ručno osvježavanje je omogućeno u ovom pregledniku."),
   ).toBeVisible();
   await page.getByRole("button", { name: "Odjavi se" }).click();
-  await expect(page).toHaveURL(/\/calendar$/);
+  await expect(page).toHaveURL(/\/agenda$/);
   await expect(page.locator(".refresh-button")).toHaveCount(0);
   expect(
     (await context.cookies()).find((c) => c.name === "pools-owner"),
@@ -384,7 +430,7 @@ test("a direct refresh action call without the owner cookie is denied before ext
   page,
   request,
 }) => {
-  await page.route("**/api/pools", (route) =>
+  await page.route("**/api/pools/*", (route) =>
     route.fulfill({ json: fixture() }),
   );
   await page.goto("/owner");
@@ -392,13 +438,13 @@ test("a direct refresh action call without the owner cookie is denied before ext
     .getByLabel("Ključ za osvježavanje")
     .fill("playwright-only-owner-key");
   await page.getByRole("button", { name: "Omogući osvježavanje" }).click();
-  await expect(page).toHaveURL(/\/calendar$/);
+  await expect(page).toHaveURL(/\/agenda$/);
   await expect(
     page.getByRole("button", { name: "Osvježi podatke", exact: true }),
   ).toBeEnabled();
 
   // Capture the real action ID without allowing this test to scrape sources.
-  await page.route("**/calendar", (route) =>
+  await page.route("**/agenda", (route) =>
     route.request().headers()["next-action"] ? route.abort() : route.continue(),
   );
   const actionRequest = page.waitForRequest(
@@ -408,7 +454,7 @@ test("a direct refresh action call without the owner cookie is denied before ext
     .getByRole("button", { name: "Osvježi podatke", exact: true })
     .click();
   const captured = await actionRequest;
-  const response = await request.post("/calendar", {
+  const response = await request.post("/agenda", {
     headers: {
       "Next-Action": captured.headers()["next-action"],
       "Content-Type": "text/plain;charset=UTF-8",
@@ -431,7 +477,7 @@ test("a raw API key in the session cookie does not unlock the owner button", asy
       url: "http://127.0.0.1:3017",
     },
   ]);
-  await page.route("**/api/pools", (route) =>
+  await page.route("**/api/pools/*", (route) =>
     route.fulfill({ json: fixture() }),
   );
   await page.goto("/calendar");
@@ -463,7 +509,7 @@ test("switching language preserves selection, uses cached schedules, and persist
   context,
 }) => {
   let reads = 0;
-  await page.route("**/api/pools", (route) => {
+  await page.route("**/api/pools/*", (route) => {
     reads++;
     return route.fulfill({ json: fixture() });
   });
@@ -475,7 +521,7 @@ test("switching language preserves selection, uses cached schedules, and persist
     .getByRole("button", { name: "Iver", exact: true })
     .click();
   await page.locator(".swim-event").first().click();
-  expect(reads).toBe(1);
+  expect(reads).toBe(POOLS.length);
   await page
     .getByRole("button", { name: "Switch to English", exact: true })
     .click();
@@ -491,7 +537,7 @@ test("switching language preserves selection, uses cached schedules, and persist
   await expect(
     page.getByRole("region", { name: "Swim time details" }),
   ).toContainText("Main pool");
-  expect(reads).toBe(1);
+  expect(reads).toBe(POOLS.length);
   expect(
     (await context.cookies()).find((c) => c.name === "pools-language")?.value,
   ).toBe("en");
@@ -502,9 +548,7 @@ test("switching language preserves selection, uses cached schedules, and persist
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
-  await expect(
-    page.getByRole("textbox", { name: "Find a pool" }),
-  ).toBeVisible();
+  await expect(page.locator(".agenda-item")).toHaveCount(8);
   await page
     .getByRole("button", { name: "Prebaci na hrvatski", exact: true })
     .click();
@@ -543,7 +587,7 @@ test("an English browser gets translated notices, lane restrictions, errors and 
         Object.assign(slot, { lanes: "3 pruge", lanesEn: "3 lanes" });
     }
   }
-  await page.route("**/api/pools", (route) => route.fulfill({ json: data }));
+  await page.route("**/api/pools/*", (route) => route.fulfill({ json: data }));
   await page.goto("/calendar");
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(
@@ -579,7 +623,7 @@ test("an English browser gets translated notices, lane restrictions, errors and 
   );
   await page.getByLabel("Refresh key").fill("playwright-only-owner-key");
   await page.getByRole("button", { name: "Enable refresh" }).click();
-  await expect(page).toHaveURL(/\/calendar$/);
+  await expect(page).toHaveURL(/\/agenda$/);
   await expect(
     page.getByRole("button", { name: "Refresh schedules", exact: true }),
   ).toBeEnabled();
@@ -595,7 +639,7 @@ test("English source failures remain understandable without Croatian error text"
 }) => {
   const context = await browser.newContext({ locale: "en-US" });
   const page = await context.newPage();
-  await page.route("**/api/pools", (route) =>
+  await page.route("**/api/pools/*", (route) =>
     route.fulfill({
       status: 503,
       json: {
@@ -609,16 +653,114 @@ test("English source failures remain understandable without Croatian error text"
   );
   await page.goto("/calendar");
   await expect(
-    page.getByText("8 schedules need checking.", { exact: false }),
+    page.getByText("Schedules are currently unavailable", { exact: false }),
   ).toBeVisible();
+  await page.locator(".schedule-errors summary").click();
   await expect(
-    page.getByText(
-      "The schedule is currently unavailable. Check the official source.",
-      { exact: true },
-    ),
+    page
+      .getByText(
+        "The schedule is currently unavailable. Check the official source.",
+        { exact: true },
+      )
+      .first(),
   ).toBeVisible();
   await expect(page.locator(".no-event").first()).toContainText(
     "No confirmed swim times",
   );
   await context.close();
+});
+
+test("one slow pool does not delay other schedules and failed pools can be retried", async ({
+  page,
+}) => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let failed = true;
+  await page.route("**/api/pools/*", async (route) => {
+    const id = route.request().url().split("/").pop();
+    if (id === POOLS[7].id) await gate;
+    const result = fixture().results.find((r) => r.pool.id === id)!;
+    return route.fulfill({
+      status: id === POOLS[1].id && failed ? 503 : 200,
+      json: {
+        results: [
+          id === POOLS[1].id && failed
+            ? { pool: result.pool, data: null, error: "unavailable" }
+            : result,
+        ],
+      },
+    });
+  });
+  await page.goto("/agenda");
+  await expect(
+    page.locator(`.agenda-item[data-pool-id="${POOLS[0].id}"] .time-pill`),
+  ).toBeVisible();
+  await expect(
+    page.locator(`.agenda-item[data-pool-id="${POOLS[7].id}"]`),
+  ).toContainText("Učitavanje");
+  release();
+  await expect(page.locator(".schedule-errors summary")).toBeVisible();
+  failed = false;
+  await page.locator(".schedule-errors summary").click();
+  await page
+    .getByRole("button", { name: "Pokušaj ponovno", exact: true })
+    .click();
+  await expect(
+    page.locator(`.agenda-item[data-pool-id="${POOLS[1].id}"] .time-pill`),
+  ).toBeVisible();
+  await expect(page.locator(".schedule-errors")).toHaveCount(0);
+});
+
+test("mobile week starts around today, controls sit above views, and storage errors are harmless", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  // Match the Saturday report regardless of the date when the test runs.
+  await page.clock.setFixedTime(new Date("2026-10-24T12:00:00Z"));
+  const weeks = getWeekDates(new Date("2026-10-24T12:00:00Z"));
+  const data = fixture();
+  for (const result of data.results) {
+    for (const key of ["currentWeek", "nextWeek"] as const) {
+      const dates = weeks[key];
+      result.data.availability[key].weekStart = dates.monday;
+      result.data.availability[key].weekEnd = dates.sunday;
+      result.data.availability[key].days.forEach((day, i) => {
+        day.date = dates.days[i].date;
+        day.day = dates.days[i].name;
+      });
+    }
+  }
+  await page.addInitScript(() => {
+    localStorage.setItem("zg-pools:favorites:v1", "invalid json");
+  });
+  await page.route("**/api/pools/*", (route) => route.fulfill({ json: data }));
+  await page.goto("/calendar");
+  await expect(page.locator(".swim-event").first()).toBeAttached();
+  await expect
+    .poll(() =>
+      page.locator(".calendar-scroll").evaluate((el) => el.scrollLeft),
+    )
+    .toBeGreaterThan(500);
+  const today = page.locator('.day-heading[data-date="2026-10-24"]');
+  const bounds = await today.boundingBox();
+  expect(bounds!.x).toBeGreaterThan(16);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+  const week = await page.locator(".date-navigation").boundingBox();
+  const views = await page.locator(".view-navigation").boundingBox();
+  expect(week!.y + week!.height).toBeLessThanOrEqual(views!.y);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    390,
+  );
+  await page.screenshot({ path: "/tmp/zg-pools-mobile-calendar.png" });
+  await page.getByRole("link", { name: "Dnevni pregled", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Dodaj u omiljene: Jelkovec", exact: true })
+    .click();
+  await expect(page.locator(".agenda-item").first()).toHaveAttribute(
+    "data-pool-id",
+    "bazen-jelkovec",
+  );
+  await page.screenshot({ path: "/tmp/zg-pools-mobile-agenda.png" });
 });
