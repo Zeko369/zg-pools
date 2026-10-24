@@ -10,7 +10,7 @@ import {
 
 export const PARSER_MODEL = "gpt-6-luna";
 const PoolTypeSchema = z.enum(["olympic", "small", "children", "diving"]);
-const BilingualTextSchema = z.object({
+const BilingualTextSchema = z.strictObject({
   hr: z.string().min(1).describe("Croatian text"),
   en: z
     .string()

@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { zodSchema } from "ai";
 import { getWeekDates, holidayForDate, zagrebDate } from "../src/lib/dates";
 import { extractPageContent, POOLS } from "../src/lib/pools";
 import {
   availabilityFromExtraction,
+  ExtractionSchema,
   intervalMinutes,
   PARSER_MODEL,
   type Extraction,
@@ -349,4 +351,20 @@ test("failed forced refresh remains marked stale on subsequent ordinary reads", 
   );
   const result = await cache.get("pool", "week", async () => 2);
   expect(result).toEqual({ value: 1, stale: true });
+});
+
+// Verify the actual SDK conversion, including objects inside nullable anyOf branches.
+test("every structured-output object forbids additional properties", () => {
+  function check(value: unknown) {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      value.forEach(check);
+      return;
+    }
+    const schema = value as Record<string, unknown>;
+    if (schema.type === "object")
+      expect(schema.additionalProperties).toBe(false);
+    Object.values(schema).forEach(check);
+  }
+  check(zodSchema(ExtractionSchema).jsonSchema);
 });

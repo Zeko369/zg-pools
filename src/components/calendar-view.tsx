@@ -1,5 +1,5 @@
 "use client";
-import type { CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import { X, ExternalLink, Clock3, Layers } from "lucide-react";
 import type { Pool } from "@/lib/pools";
 import type { PoolResult } from "@/lib/data";
@@ -33,6 +33,7 @@ export function CalendarView({
   week,
   type,
   today,
+  focusDate,
   loading,
   overlap,
   highlightedPool,
@@ -45,6 +46,7 @@ export function CalendarView({
   week: WeekDates;
   type: PoolType | "all";
   today: string;
+  focusDate: string;
   loading: boolean;
   overlap: boolean;
   highlightedPool: string | null;
@@ -110,6 +112,26 @@ export function CalendarView({
   const minWidth = overlap
     ? 950
     : Math.max(720, 58 + 7 * Math.max(1, singleTypes.length) * 90);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  function scrollToDate(iso: string) {
+    const scroll = scrollRef.current;
+    const day = scroll?.querySelector<HTMLElement>(`[data-date="${iso}"]`);
+    const inner = scroll?.querySelector<HTMLElement>(".calendar-inner");
+    if (scroll && day && inner)
+      scroll.scrollLeft =
+        day.getBoundingClientRect().left -
+        inner.getBoundingClientRect().left -
+        58;
+  }
+  useEffect(() => {
+    const mobile = window.matchMedia("(max-width: 600px)");
+    const position = () => {
+      if (mobile.matches) scrollToDate(focusDate);
+    };
+    position();
+    mobile.addEventListener("change", position);
+    return () => mobile.removeEventListener("change", position);
+  }, [week.monday, focusDate, minWidth]);
   return (
     <section
       className={`week-calendar ${overlap ? "overlap-calendar" : ""}`}
@@ -129,17 +151,28 @@ export function CalendarView({
           <small>{t.overlapHint}</small>
         </div>
       )}
+      <div className="mobile-calendar-help">
+        <span>{t.calendarSwipe}</span>
+        {week.days.some((d) =>
+          parseDate(d.date).toISOString().startsWith(today),
+        ) && <button onClick={() => scrollToDate(today)}>{t.jumpToday}</button>}
+      </div>
       <div
+        ref={scrollRef}
         className="calendar-scroll"
         tabIndex={0}
         aria-label={t.scrollCalendar}
       >
-        <div className="calendar-inner" style={{ minWidth }}>
+        <div
+          className="calendar-inner"
+          style={{ "--calendar-min-width": `${minWidth}px` } as CSSProperties}
+        >
           <div className="calendar-day-head">
             <div className="time-zone">{t.hours}</div>
             {days.map((info) => (
               <div
                 key={info.date}
+                data-date={parseDate(info.date).toISOString().slice(0, 10)}
                 className={`day-heading ${parseDate(info.date).toISOString().startsWith(today) ? "is-today" : ""}`}
               >
                 <span>{weekday(info.date, language, "short")}</span>
@@ -242,7 +275,12 @@ export function CalendarView({
                               ? undefined
                               : singleDay
                         }
-                        loading={loading}
+                        loading={
+                          loading &&
+                          !pools.every((pool) =>
+                            results.some((r) => r.pool.id === pool.id),
+                          )
+                        }
                       />
                     </div>
                   )}

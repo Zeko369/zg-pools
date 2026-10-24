@@ -21,6 +21,7 @@ export function LanguageSwitcher() {
         })
       }
     >
+      <span aria-hidden="true">{next === "en" ? "🇬🇧" : "🇭🇷"}</span>
       {next === "en" ? "English" : "Hrvatski"}
     </Button>
   );

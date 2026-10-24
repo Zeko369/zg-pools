@@ -2,12 +2,12 @@
 
 Find public swimming times across Zagreb in one place. Bazeni Zagreb brings together the published schedules for eight Sportski objekti facilities, covering the current and next week.
 
-**[Open the live app →](https://zg-pools.zeko.run/calendar)** · [Daily agenda](https://zg-pools.zeko.run/agenda)
+**[Open the live app →](https://zg-pools.zeko.run/agenda)** · [Weekly calendar](https://zg-pools.zeko.run/calendar)
 
 ## What it does
 
 - **Weekly calendar:** browse one facility or choose **Svi objekti** to compare all eight. Filter by pool type, hide facilities, and select a time block for details.
-- **Daily agenda:** pick a date, search facilities, and see each pool's public swimming slots.
+- **Daily agenda:** the default view. Pick a date and see each pool's public swimming slots. Star favorites to pin them first; favorites are saved in this browser.
 - **Schedule details:** see holiday changes, closure notices, pool types, and lane restrictions when published by the official source.
 
 The app reads official facility pages and linked timetable PDFs, then uses **GPT-6 Luna** to turn them into structured schedules. Data is fetched on demand; the owner can also request a manual refresh.
@@ -50,7 +50,7 @@ cp .env.example .env.local
 bun dev
 ```
 
-Open [localhost:3000](http://localhost:3000). The home page redirects to `/calendar`; `/agenda` provides the daily view. The former `/compare` route also redirects to `/calendar`.
+Open [localhost:3000](http://localhost:3000). The home page redirects to `/agenda`; `/calendar` provides the weekly view. View links preserve the selected date, week, facility and pool type in the URL. The former `/compare` route also redirects to `/calendar`.
 
 `OPENAI_API_KEY` stays on the server. `POOLS_API_SECRET` is optional and enables owner access and authenticated API refreshes, as described below.
 
@@ -64,7 +64,7 @@ Guests have no manual refresh button. The server action checks owner access on e
 
 ## When extraction runs
 
-**Nothing runs on a timer.** Builds, server startup, route prefetches and hidden/unopened browser pages do not trigger extraction. A visible page requests schedules once on mount. GET schedule API calls also count as explicit requests. No browser polling, cron, scheduled revalidation or stale-while-revalidate work is used.
+**Nothing runs on a timer.** Builds, server startup, route prefetches and hidden/unopened browser pages do not trigger extraction. A visible page requests each pool once on mount, displaying each result as it arrives. Failed pools can be retried explicitly; retries use the same server cooldown. GET schedule API calls also count as explicit requests. No browser polling, cron, scheduled revalidation or stale-while-revalidate work is used.
 
 Successful data is cached for one hour **per server process**. Expiry itself does nothing; the next request refreshes it. Concurrent requests share one in-flight task per pool. An authenticated owner-button or API refresh requests a fresh scrape, subject to a 60-second cooldown. Failed requests also have a 60-second retry cooldown. Refresh failure retains the last same-week result with `stale: true`; data from an earlier week is never served for the new week. A failed facility does not hide successful facilities.
 

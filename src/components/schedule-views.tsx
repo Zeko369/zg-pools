@@ -1,4 +1,6 @@
 "use client";
+import { Fragment } from "react";
+import { FavoriteButton } from "./favorite-button";
 import { ExternalLink, Waves, Clock3 } from "lucide-react";
 import type { Pool } from "@/lib/pools";
 import type { PoolResult } from "@/lib/data";
@@ -43,12 +45,16 @@ export function AgendaView({
   date,
   loading,
   type,
+  favorites,
+  onToggleFavorite,
 }: {
   catalog: Pool[];
   results: PoolResult[];
   date: string;
   loading: boolean;
   type: PoolType | "all";
+  favorites: string[];
+  onToggleFavorite: (id: string) => void;
 }) {
   const { language, t } = useLanguage();
   return (
@@ -59,68 +65,82 @@ export function AgendaView({
         const groups =
           day?.pools.filter((p) => type === "all" || p.poolType === type) ?? [];
         return (
-          <article className="agenda-item" key={pool.id}>
-            <div className="agenda-number">
-              {String(i + 1).padStart(2, "0")}
-            </div>
-            <div className="agenda-title">
-              <h2>
-                <i className="color-dot" style={poolColorStyle(pool.color)} />
-                {pool.shortName}
-              </h2>
-              <p>{areaName(pool.area, language)}</p>
-              <a
-                className="source-link"
-                href={pool.url}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {t.officialSchedule} <ExternalLink size={12} />
-              </a>
-            </div>
-            <div className="agenda-hours">
-              {groups.length ? (
-                groups.map((group) => (
-                  <div className="slot-group" key={group.poolType}>
-                    <span className="pool-type-label">
-                      {t.poolTypes[group.poolType]}
-                    </span>
-                    <div className="time-pills">
-                      {group.slots.map((slot, index) => (
-                        <span
-                          className="time-pill"
-                          style={poolColorStyle(pool.color)}
-                          key={index}
-                        >
-                          <Clock3 size={13} />
-                          {slot.hours}
-                          {slot.lanes && (
-                            <small>
-                              {sourceText(slot.lanes, slot.lanesEn, language)}
-                            </small>
-                          )}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <StateLabel
-                  day={day?.status === "open" ? undefined : day}
-                  loading={loading}
+          <Fragment key={pool.id}>
+            {favorites.length > 0 &&
+              (i === 0 ||
+                favorites.includes(catalog[i - 1].id) !==
+                  favorites.includes(pool.id)) && (
+                <h2 className="agenda-group-heading">
+                  {favorites.includes(pool.id) ? t.favoritePools : t.otherPools}
+                </h2>
+              )}
+            <article className="agenda-item" data-pool-id={pool.id}>
+              <div className="agenda-number">
+                <FavoriteButton
+                  pool={pool}
+                  favorite={favorites.includes(pool.id)}
+                  onToggle={() => onToggleFavorite(pool.id)}
                 />
-              )}
-              {day?.reason && (
-                <p className="day-reason">
-                  {sourceText(day.reason, day.reasonEn, language)}
-                </p>
-              )}
-              {result?.error && (
-                <p className="day-reason">{t.sourceUnavailable}</p>
-              )}
-              {result?.data?.stale && <p className="day-reason">{t.stale}</p>}
-            </div>
-          </article>
+              </div>
+              <div className="agenda-title">
+                <h2>
+                  <i className="color-dot" style={poolColorStyle(pool.color)} />
+                  {pool.shortName}
+                </h2>
+                <p>{areaName(pool.area, language)}</p>
+                <a
+                  className="source-link"
+                  href={pool.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {t.officialSchedule} <ExternalLink size={12} />
+                </a>
+              </div>
+              <div className="agenda-hours">
+                {groups.length ? (
+                  groups.map((group) => (
+                    <div className="slot-group" key={group.poolType}>
+                      <span className="pool-type-label">
+                        {t.poolTypes[group.poolType]}
+                      </span>
+                      <div className="time-pills">
+                        {group.slots.map((slot, index) => (
+                          <span
+                            className="time-pill"
+                            style={poolColorStyle(pool.color)}
+                            key={index}
+                          >
+                            <Clock3 size={13} />
+                            {slot.hours}
+                            {slot.lanes && (
+                              <small>
+                                {sourceText(slot.lanes, slot.lanesEn, language)}
+                              </small>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <StateLabel
+                    day={day?.status === "open" ? undefined : day}
+                    loading={loading && !result}
+                  />
+                )}
+                {day?.reason && (
+                  <p className="day-reason">
+                    {sourceText(day.reason, day.reasonEn, language)}
+                  </p>
+                )}
+                {result?.error && (
+                  <p className="day-reason">{t.sourceUnavailable}</p>
+                )}
+                {result?.data?.stale && <p className="day-reason">{t.stale}</p>}
+              </div>
+            </article>
+          </Fragment>
         );
       })}
       {!catalog.length && (

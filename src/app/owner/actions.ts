@@ -23,10 +23,10 @@ export async function signInOwner(formData: FormData) {
     path: "/",
     maxAge: OWNER_SESSION_SECONDS,
   });
-  redirect("/calendar");
+  redirect("/agenda");
 }
 
 export async function signOutOwner() {
   (await cookies()).delete(OWNER_COOKIE);
-  redirect("/calendar");
+  redirect("/agenda");
 }

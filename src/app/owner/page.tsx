@@ -36,7 +36,7 @@ export default async function OwnerPage({
   return (
     <main className="owner-page">
       <div className="owner-navigation">
-        <Link href="/calendar" prefetch={false}>
+        <Link href="/agenda" prefetch={false}>
           ← {t.backToSchedule}
         </Link>
         <LanguageSwitcher />
