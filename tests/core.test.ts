@@ -8,6 +8,19 @@ import {
   type Extraction,
 } from "../src/lib/ai";
 import { RequestCache } from "../src/lib/request-cache";
+import {
+  detectLanguage,
+  holidayName,
+  weekday,
+  weekLabel,
+  sourceTexts,
+} from "../src/lib/i18n";
+import {
+  createOwnerSession,
+  matchesSecret,
+  OWNER_SESSION_SECONDS,
+  validOwnerSession,
+} from "../src/lib/owner-session";
 const now = new Date("2026-10-24T08:00:00Z");
 function extraction(): Extraction {
   const week = getWeekDates(now);
@@ -28,15 +41,20 @@ function extraction(): Extraction {
   };
 }
 describe("sources and dates", () => {
-  test("six unique pools, verified public-hours URLs", () => {
-    expect(POOLS).toHaveLength(6);
-    expect(new Set(POOLS.map((p) => p.id)).size).toBe(6);
+  test("eight unique pools, verified public-hours URLs", () => {
+    expect(POOLS).toHaveLength(8);
+    expect(new Set(POOLS.map((p) => p.id)).size).toBe(8);
     expect(POOLS.find((p) => p.id === "bazen-spansko")?.url).toEndWith(
       "?tab=2316",
     );
     expect(
       POOLS.find((p) => p.id === "bazenski-kompleks-svetice")?.url,
     ).toEndWith("/1366");
+    expect(POOLS.find((p) => p.id === "bazen-iver")?.url).toEndWith("/1388");
+    expect(POOLS.find((p) => p.id === "src-salata")?.url).toEndWith(
+      "?tab=1361",
+    );
+    expect(new Set(POOLS.map((p) => p.color)).size).toBe(8);
     expect(PARSER_MODEL).toBe("gpt-6-luna");
   });
   test("Zagreb week rolls on local Monday, even on UTC Sunday", () => {
@@ -84,8 +102,115 @@ describe("sources and dates", () => {
       ),
     ).toThrow();
   });
+  test("Šalata extraction includes the season closure and swimming tab, excluding skating", () => {
+    const html = `<button class="nav-link" data-bs-target="#objekt-tab2-pane">Obavijesti</button><div id="objekt-content"><div class="tab-pane active" id="objekt-tab3-pane">Klizalište 09:00 - 22:00</div><div class="tab-pane" id="objekt-tab1361-pane">Radno vrijeme bazena za građanstvo 13:30 - 18:00</div><div class="tab-pane" id="objekt-tab2-pane">Kupališna sezona završava 13.rujna 2026.</div></div>`;
+    const result = extractPageContent(
+      html,
+      POOLS.find((p) => p.id === "src-salata")!.url,
+    );
+    expect(result.text).toContain("13:30 - 18:00");
+    expect(result.text).toContain("sezona završava 13.rujna 2026.");
+    expect(result.text).not.toContain("Klizalište");
+  });
+});
+
+describe("owner access", () => {
+  const secret = "unit-test-owner-key";
+  const issuedAt = now.getTime();
+  test("signed sessions expire and rotating the key invalidates them", () => {
+    const session = createOwnerSession(secret, issuedAt);
+    expect(session).not.toContain(secret);
+    expect(validOwnerSession(session, secret, issuedAt)).toBe(true);
+    expect(validOwnerSession(session, "rotated-test-key", issuedAt)).toBe(
+      false,
+    );
+    expect(
+      validOwnerSession(
+        session,
+        secret,
+        issuedAt + OWNER_SESSION_SECONDS * 1000,
+      ),
+    ).toBe(false);
+  });
+  test("missing keys, raw keys, tampered signatures and changed expiry fail closed", () => {
+    const session = createOwnerSession(secret, issuedAt);
+    expect(matchesSecret(secret, undefined)).toBe(false);
+    expect(matchesSecret("wrong-key", secret)).toBe(false);
+    expect(matchesSecret(secret, secret)).toBe(true);
+    expect(validOwnerSession(session, undefined, issuedAt)).toBe(false);
+    expect(validOwnerSession(undefined, secret, issuedAt)).toBe(false);
+    expect(validOwnerSession(secret, secret, issuedAt)).toBe(false);
+    const parts = session.split(".");
+    parts[1] = String(Number(parts[1]) + 86400000);
+    expect(validOwnerSession(parts.join("."), secret, issuedAt)).toBe(false);
+    expect(
+      validOwnerSession(
+        `${session.slice(0, -1)}${session.endsWith("0") ? "1" : "0"}`,
+        secret,
+        issuedAt,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("language preferences and display", () => {
+  test("negotiates supported regional tags by HTTP quality and preference order", () => {
+    expect(detectLanguage("en-US,en;q=0.9")).toBe("en");
+    expect(detectLanguage("hr-HR,hr;q=0.9,en;q=0.8")).toBe("hr");
+    expect(detectLanguage("hr;q=0.4,en-GB;q=0.9")).toBe("en");
+    expect(detectLanguage("de-DE,de;q=0.9,hr-HR;q=0.8,en;q=0.7")).toBe("hr");
+    expect(detectLanguage("hr,en")).toBe("hr");
+    expect(detectLanguage("en;q=0,hr;q=0.5")).toBe("hr");
+    expect(detectLanguage("hr;q=invalid,en;q=0.8")).toBe("en");
+    expect(detectLanguage("en;q=2,hr;q=0.5")).toBe("hr");
+  });
+  test("explicit saved language wins; unsupported or missing preferences fall back to English", () => {
+    expect(detectLanguage("hr-HR", "en")).toBe("en");
+    expect(detectLanguage("en-GB", "hr")).toBe("hr");
+    expect(detectLanguage("hr-HR", "de")).toBe("hr");
+    expect(detectLanguage("de-DE,fr;q=0.8")).toBe("en");
+    expect(detectLanguage(null)).toBe("en");
+    expect(detectLanguage("*")).toBe("en");
+  });
+  test("weekdays, date ranges and all holiday names are localized", () => {
+    expect(weekday("19.10.2026", "en")).toBe("Monday");
+    expect(weekday("19.10.2026", "hr")).toBe("ponedjeljak");
+    expect(weekLabel("19.10.2026", "25.10.2026", "en")).toContain("Oct");
+    expect(weekLabel("19.10.2026", "25.10.2026", "hr")).toContain("lis");
+    expect(holidayName("01.11.2026", "en")).toBe("All Saints’ Day");
+    expect(holidayName("05.04.2026", "en")).toBe("Easter Sunday");
+    expect(holidayName("04.06.2026", "en")).toBe("Corpus Christi");
+    expect(holidayName("01.11.2026", "hr")).toBe("Svi sveti");
+    expect(holidayName("24.10.2026", "en")).toBeNull();
+    expect(sourceTexts(["Izvor"], ["Source"], "en")).toEqual(["Source"]);
+    expect(sourceTexts(["Izvor"], ["Source"], "hr")).toEqual(["Izvor"]);
+  });
 });
 describe("model output validation", () => {
+  test("one extraction preserves Croatian API text and its aligned English translations", () => {
+    const raw = extraction();
+    raw.days[0].reason = { hr: "Samo 3 pruge", en: "Only 3 lanes" };
+    raw.days[0].pools[0].slots[0].lanes = { hr: "3 pruge", en: "3 lanes" };
+    raw.alerts = [
+      { hr: "Radovi do 25.10.2026.", en: "Maintenance until 25.10.2026." },
+    ];
+    raw.notices = [
+      { hr: "Kapa je obavezna", en: "A swimming cap is required" },
+    ];
+    const data = availabilityFromExtraction("Iver", raw, now);
+    expect(data.currentWeek.days[0].reason).toBe("Samo 3 pruge");
+    expect(data.currentWeek.days[0].reasonEn).toBe("Only 3 lanes");
+    expect(data.currentWeek.days[0].pools[0].slots[0]).toMatchObject({
+      hours: "06:30 - 20:00",
+      lanes: "3 pruge",
+      lanesEn: "3 lanes",
+    });
+    expect(data.alerts).toEqual(["Radovi do 25.10.2026."]);
+    expect(data.alertsEn).toEqual(["Maintenance until 25.10.2026."]);
+    expect(data.noticesEn).toEqual(["A swimming cap is required"]);
+    raw.notices[0].en = "";
+    expect(() => availabilityFromExtraction("Iver", raw, now)).toThrow();
+  });
   test("dates and holiday metadata come from deterministic Zagreb calendar", () => {
     const data = availabilityFromExtraction("Špansko", extraction(), now);
     expect(data.currentWeek.days[0].day).toBe("Ponedjeljak");
@@ -105,7 +230,10 @@ describe("model output validation", () => {
       date: raw.days[0].date,
       status: "unknown",
       pools: [],
-      reason: "Raspored nije objavljen",
+      reason: {
+        hr: "Raspored nije objavljen",
+        en: "The schedule has not been published",
+      },
     };
     expect(
       availabilityFromExtraction("x", raw, now).currentWeek.days[0].status,
@@ -135,7 +263,9 @@ describe("model output validation", () => {
     raw.days[0].pools.push(
       {
         poolType: "small",
-        slots: [{ hours: "13:00 - 19:00", lanes: "3 pruge" }],
+        slots: [
+          { hours: "13:00 - 19:00", lanes: { hr: "3 pruge", en: "3 lanes" } },
+        ],
       },
       {
         poolType: "children",

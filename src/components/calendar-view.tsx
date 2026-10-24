@@ -7,7 +7,9 @@ import type { PoolType } from "@/lib/ai";
 import { parseDate, type WeekDates } from "@/lib/dates";
 import { overlapPlacement } from "@/lib/calendar-layout";
 import { poolColorStyle } from "@/lib/pool-colors";
-import { dayOf, StateLabel, TYPE_LABELS } from "./schedule-views";
+import { dayOf, StateLabel } from "./schedule-views";
+import { holidayName, sourceText, weekday } from "@/lib/i18n";
+import { useLanguage } from "./language-provider";
 
 export interface CalendarSlot {
   id: string;
@@ -17,7 +19,9 @@ export interface CalendarSlot {
   poolType: PoolType;
   hours: string;
   lanes?: string;
+  lanesEn?: string;
   reason?: string;
+  reasonEn?: string;
 }
 function toMinute(time: string) {
   const [h, m] = time.split(":").map(Number);
@@ -48,6 +52,7 @@ export function CalendarView({
   onSelectSlot: (slot: CalendarSlot | null) => void;
   onHighlight: (id: string | null) => void;
 }) {
+  const { language, t } = useLanguage();
   const slotsForDay = (date: string, dayName: string): CalendarSlot[] =>
     pools.flatMap((pool) => {
       const day = dayOf(
@@ -66,6 +71,7 @@ export function CalendarView({
               poolType: group.poolType,
               ...slot,
               reason: day.reason,
+              reasonEn: day.reasonEn,
             })),
           ) ?? []
       );
@@ -112,31 +118,31 @@ export function CalendarView({
       }}
       aria-label={
         overlap
-          ? "Tjedni kalendar: svi objekti"
-          : `Tjedni kalendar: ${pools[0]?.shortName ?? "bazeni"}`
+          ? `${t.weeklyCalendar}: ${t.allFacilities.toLocaleLowerCase()}`
+          : `${t.weeklyCalendar}: ${pools[0]?.shortName ?? t.pools}`
       }
     >
       {overlap && (
         <div className="overlap-intro">
           <Layers size={15} />
-          <span>{pools.length} objekata u jednom kalendaru</span>
-          <small>Prijeđi preko termina za pregled · klikni za detalje</small>
+          <span>{t.overlapSummary(pools.length)}</span>
+          <small>{t.overlapHint}</small>
         </div>
       )}
       <div
         className="calendar-scroll"
         tabIndex={0}
-        aria-label="Tjedni raspored; pomaknite vodoravno za ostale dane"
+        aria-label={t.scrollCalendar}
       >
         <div className="calendar-inner" style={{ minWidth }}>
           <div className="calendar-day-head">
-            <div className="time-zone">SATI</div>
+            <div className="time-zone">{t.hours}</div>
             {days.map((info) => (
               <div
                 key={info.date}
                 className={`day-heading ${parseDate(info.date).toISOString().startsWith(today) ? "is-today" : ""}`}
               >
-                <span>{info.name.slice(0, 3)}</span>
+                <span>{weekday(info.date, language, "short")}</span>
                 <b>{info.date.slice(0, 2)}</b>
               </div>
             ))}
@@ -194,14 +200,14 @@ export function CalendarView({
                         key={slot.id}
                         data-pool-id={slot.pool.id}
                         className={`swim-event ${bottom - y <= 60 ? "compact-event" : ""} ${bottom - y < 40 ? "short-event" : ""} ${selected ? "event-selected" : ""} ${highlightedPool && highlightedPool !== slot.pool.id ? "event-muted" : ""} ${highlightedPool === slot.pool.id ? "event-highlighted" : ""}`}
-                        aria-label={`${slot.pool.shortName}, ${slot.dayName} ${slot.date}, ${TYPE_LABELS[slot.poolType]}, ${slot.hours}`}
+                        aria-label={`${slot.pool.shortName}, ${weekday(slot.date, language)} ${slot.date}, ${t.poolTypes[slot.poolType]}, ${slot.hours}`}
                         aria-pressed={selected}
                         onClick={() => onSelectSlot(selected ? null : slot)}
                         onMouseEnter={() => onHighlight(slot.pool.id)}
                         onMouseLeave={() => onHighlight(null)}
                         onFocus={() => onHighlight(slot.pool.id)}
                         onBlur={() => onHighlight(null)}
-                        title={`${slot.pool.shortName} · ${TYPE_LABELS[slot.poolType]} · ${slot.hours}${slot.lanes ? ` · ${slot.lanes}` : ""}`}
+                        title={`${slot.pool.shortName} · ${t.poolTypes[slot.poolType]} · ${slot.hours}${slot.lanes ? ` · ${sourceText(slot.lanes, slot.lanesEn, language)}` : ""}`}
                         style={
                           {
                             ...poolColorStyle(slot.pool.color),
@@ -215,8 +221,12 @@ export function CalendarView({
                       >
                         <strong>{slot.pool.shortName}</strong>
                         <span>{slot.hours.replace(" - ", "–")}</span>
-                        <small>{TYPE_LABELS[slot.poolType]}</small>
-                        {slot.lanes && <small>{slot.lanes}</small>}
+                        <small>{t.poolTypes[slot.poolType]}</small>
+                        {slot.lanes && (
+                          <small>
+                            {sourceText(slot.lanes, slot.lanesEn, language)}
+                          </small>
+                        )}
                       </button>
                     );
                   })}
@@ -237,7 +247,9 @@ export function CalendarView({
                     </div>
                   )}
                   {singleDay?.holidayName && (
-                    <span className="holiday-tag">{singleDay.holidayName}</span>
+                    <span className="holiday-tag">
+                      {holidayName(info.date, language)}
+                    </span>
                   )}
                 </div>
               );
@@ -250,16 +262,16 @@ export function CalendarView({
           className="slot-detail"
           style={poolColorStyle(selectedSlot.pool.color)}
           role="region"
-          aria-label="Detalji termina"
+          aria-label={t.slotDetails}
         >
           <div className="slot-detail-heading">
             <i className="color-dot" />
             <strong>{selectedSlot.pool.shortName}</strong>
             <span>
-              {selectedSlot.dayName} · {selectedSlot.date}
+              {weekday(selectedSlot.date, language)} · {selectedSlot.date}
             </span>
             <button
-              aria-label="Zatvori detalje termina"
+              aria-label={t.closeDetails}
               onClick={() => onSelectSlot(null)}
             >
               <X size={16} />
@@ -270,13 +282,21 @@ export function CalendarView({
               <Clock3 size={15} />
               {selectedSlot.hours}
             </span>
-            <span>{TYPE_LABELS[selectedSlot.poolType]}</span>
-            {selectedSlot.lanes && <span>{selectedSlot.lanes}</span>}
+            <span>{t.poolTypes[selectedSlot.poolType]}</span>
+            {selectedSlot.lanes && (
+              <span>
+                {sourceText(selectedSlot.lanes, selectedSlot.lanesEn, language)}
+              </span>
+            )}
             <a href={selectedSlot.pool.url} target="_blank" rel="noreferrer">
-              Službeni raspored <ExternalLink size={13} />
+              {t.officialSchedule} <ExternalLink size={13} />
             </a>
           </div>
-          {selectedSlot.reason && <p>{selectedSlot.reason}</p>}
+          {selectedSlot.reason && (
+            <p>
+              {sourceText(selectedSlot.reason, selectedSlot.reasonEn, language)}
+            </p>
+          )}
         </div>
       )}
       <div className="calendar-legend">
@@ -295,9 +315,7 @@ export function CalendarView({
             {pool.shortName}
           </button>
         ))}
-        {!pools.length && (
-          <span>Odaberi barem jedan objekt s desne strane.</span>
-        )}
+        {!pools.length && <span>{t.chooseOne}</span>}
       </div>
     </section>
   );

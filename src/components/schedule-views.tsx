@@ -4,13 +4,8 @@ import type { Pool } from "@/lib/pools";
 import type { PoolResult } from "@/lib/data";
 import type { DaySchedule, PoolType } from "@/lib/ai";
 import { poolColorStyle } from "@/lib/pool-colors";
-
-export const TYPE_LABELS = {
-  olympic: "Veliki bazen",
-  small: "Mali / srednji bazen",
-  children: "Dječji bazen",
-  diving: "Bazen za skokove",
-};
+import { areaName, sourceText } from "@/lib/i18n";
+import { useLanguage } from "./language-provider";
 export function dayOf(
   result: PoolResult | undefined,
   date: string,
@@ -31,13 +26,14 @@ export function StateLabel({
   day?: Pick<DaySchedule, "status">;
   loading?: boolean;
 }) {
+  const { t } = useLanguage();
   return (
     <span className={`state-label ${day?.status ?? "unknown"}`}>
       {loading
-        ? "Učitavanje…"
+        ? `${t.loading}…`
         : day?.status === "closed"
-          ? "Zatvoreno"
-          : "Nema potvrđenih termina"}
+          ? t.closed
+          : t.noConfirmedSlots}
     </span>
   );
 }
@@ -54,8 +50,9 @@ export function AgendaView({
   loading: boolean;
   type: PoolType | "all";
 }) {
+  const { language, t } = useLanguage();
   return (
-    <section className="agenda-list" aria-label="Termini po bazenima">
+    <section className="agenda-list" aria-label={t.agendaRegion}>
       {catalog.map((pool, i) => {
         const result = results.find((r) => r.pool.id === pool.id),
           day = dayOf(result, date);
@@ -71,14 +68,14 @@ export function AgendaView({
                 <i className="color-dot" style={poolColorStyle(pool.color)} />
                 {pool.shortName}
               </h2>
-              <p>{pool.area}</p>
+              <p>{areaName(pool.area, language)}</p>
               <a
                 className="source-link"
                 href={pool.url}
                 target="_blank"
                 rel="noreferrer"
               >
-                Službeni raspored <ExternalLink size={12} />
+                {t.officialSchedule} <ExternalLink size={12} />
               </a>
             </div>
             <div className="agenda-hours">
@@ -86,7 +83,7 @@ export function AgendaView({
                 groups.map((group) => (
                   <div className="slot-group" key={group.poolType}>
                     <span className="pool-type-label">
-                      {TYPE_LABELS[group.poolType]}
+                      {t.poolTypes[group.poolType]}
                     </span>
                     <div className="time-pills">
                       {group.slots.map((slot, index) => (
@@ -97,7 +94,11 @@ export function AgendaView({
                         >
                           <Clock3 size={13} />
                           {slot.hours}
-                          {slot.lanes && <small>{slot.lanes}</small>}
+                          {slot.lanes && (
+                            <small>
+                              {sourceText(slot.lanes, slot.lanesEn, language)}
+                            </small>
+                          )}
                         </span>
                       ))}
                     </div>
@@ -109,13 +110,15 @@ export function AgendaView({
                   loading={loading}
                 />
               )}
-              {day?.reason && <p className="day-reason">{day.reason}</p>}
-              {result?.error && <p className="day-reason">{result.error}</p>}
-              {result?.data?.stale && (
+              {day?.reason && (
                 <p className="day-reason">
-                  Sačuvan raspored · zadnja provjera nije uspjela
+                  {sourceText(day.reason, day.reasonEn, language)}
                 </p>
               )}
+              {result?.error && (
+                <p className="day-reason">{t.sourceUnavailable}</p>
+              )}
+              {result?.data?.stale && <p className="day-reason">{t.stale}</p>}
             </div>
           </article>
         );
@@ -123,8 +126,8 @@ export function AgendaView({
       {!catalog.length && (
         <div className="empty-state">
           <Waves />
-          <h2>Nema bazena za ovaj odabir</h2>
-          <p>Promijenite pretragu ili uključite drugi bazen.</p>
+          <h2>{t.noPools}</h2>
+          <p>{t.changeSearch}</p>
         </div>
       )}
     </section>

@@ -8,6 +8,7 @@ Agent workflow:
 - Start with the OpenAPI schema and pool catalog. These and this file do not scrape sources or invoke AI.
 - Fetch schedules only when answering a user request. GET schedule requests can trigger extraction on a cache miss. Prefer the single-pool endpoint when only one facility is needed.
 - Successful schedules are cached for one hour per server process. Concurrent requests share extraction work. Cache expiry does nothing until another request arrives; there is no scheduled refresh or polling.
+- The website's manual refresh button is owner-only. Guests can read schedules; expired or missing caches still refresh on demand. The owner signs in at /owner; agents continue to use Bearer authentication for POST refresh.
 - For an explicitly requested fresh check, POST /api/pools/refresh with Authorization: Bearer <token> and Content-Type: application/json. The token must match the server's configured POOLS_API_SECRET; never put it in a URL. Send {"poolId":"bazen-spansko"} for one facility or {} for all. Forced refreshes and failed retries have a 60-second cooldown. Allow up to 180 seconds for a cold request.
 - Do not create recurring polling or background updates unless the user explicitly requests them.
 
@@ -15,6 +16,7 @@ Response interpretation:
 - Schedule responses contain timezone, generatedAt, partial and results. Each result contains pool, data and error. A successful data object includes availability, fetchedAt, stale and model.
 - Inspect each result's error and stale fields, even on HTTP 200. Partial results may contain failed facilities. HTTP 503 means all requested facilities failed; 400 means invalid parameters, 404 an unknown pool, and 401 invalid or unconfigured refresh credentials.
 - availability contains currentWeek/nextWeek, or day for date/compact requests, plus alerts and notices. Read fetchedAt for freshness; generatedAt is the response time, not the source-check time.
+- The website supports English and Croatian, defaults from Accept-Language, and remembers an explicit language choice. API data stays language-independent: reason, lanes, alerts and notices remain Croatian, with additive reasonEn, lanesEn, alertsEn and noticesEn translations. English arrays follow the same order as their Croatian counterparts. Prefer these English fields when answering in English; IDs, date formats, day names and status values are unchanged.
 - A day's status is open, closed or unknown. open means published public-swimming slots exist for that date, not that the facility is open right now. unknown must not be reported as closed or open. Check slot times and dated alerts before recommending a visit.
 - Pool types are olympic (main/large pool, regardless of length), small (small/warm-up pool), children (children-only pool) and diving (diving pool). Slots contain HH:MM - HH:MM hours and optional lane restrictions.
 - If data is stale, unknown or unavailable, say so and offer the official source URL returned in the catalog. Earlier-week data is not reused for a new week. Do not invent missing hours or ignore holiday closures.

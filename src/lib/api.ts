@@ -62,7 +62,9 @@ export async function schedulesResponse(
               ...availability.nextWeek.days,
             ].find((d) => d.date === selected),
             alerts: availability.alerts,
+            alertsEn: availability.alertsEn,
             notices: availability.notices,
+            noticesEn: availability.noticesEn,
           },
         },
       };
@@ -75,7 +77,9 @@ export async function schedulesResponse(
           ...(week !== "next" ? { currentWeek: availability.currentWeek } : {}),
           ...(week !== "current" ? { nextWeek: availability.nextWeek } : {}),
           alerts: availability.alerts,
+          alertsEn: availability.alertsEn,
           notices: availability.notices,
+          noticesEn: availability.noticesEn,
         },
       },
     };

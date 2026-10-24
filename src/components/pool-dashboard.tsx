@@ -20,7 +20,17 @@ import type { Pool } from "@/lib/pools";
 import type { PoolResult } from "@/lib/data";
 import type { PoolType } from "@/lib/ai";
 import { parseDate, zagrebDate, type WeekInfo } from "@/lib/dates";
-import { AgendaView, dayOf, TYPE_LABELS } from "./schedule-views";
+import { AgendaView, dayOf } from "./schedule-views";
+import {
+  areaName,
+  LOCALES,
+  sourceTexts,
+  weekday,
+  weekLabel,
+  type NoticeKey,
+} from "@/lib/i18n";
+import { useLanguage } from "./language-provider";
+import { LanguageSwitcher } from "./language-switcher";
 
 import { CalendarView, type CalendarSlot } from "./calendar-view";
 import { poolColorStyle } from "@/lib/pool-colors";
@@ -49,22 +59,25 @@ const NAV = [
   {
     mode: "calendar",
     href: "/calendar",
-    label: "Kalendar",
+    label: "calendar",
     Icon: CalendarDays,
   },
-  { mode: "agenda", href: "/agenda", label: "Dnevni pregled", Icon: List },
+  { mode: "agenda", href: "/agenda", label: "agenda", Icon: List },
 ] as const;
 export function PoolDashboard({
   catalog,
   mode,
   weeks,
   today: initialToday,
+  canRefresh,
 }: {
   catalog: Pool[];
   mode: Mode;
   weeks: WeekInfo;
   today: string;
+  canRefresh: boolean;
 }) {
+  const { language, t } = useLanguage();
   const [today, setToday] = useState(initialToday);
   const [results, setResults] = useState<PoolResult[]>([]),
     [loading, setLoading] = useState(true);
@@ -73,7 +86,7 @@ export function PoolDashboard({
   const [type, setType] = useState<PoolType | "all">("olympic"),
     [search, setSearch] = useState("");
   const [selectedDate, setSelectedDate] = useState(today),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState<NoticeKey | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<CalendarSlot | null>(null);
   const [highlightedPool, setHighlightedPool] = useState<string | null>(null);
   function selectPool(id: string) {
@@ -96,10 +109,7 @@ export function PoolDashboard({
           }
         })
         .catch(() => {
-          if (mounted)
-            setNotice(
-              "Dohvat nije uspio. Pokušajte ponovno ili otvorite službeni raspored.",
-            );
+          if (mounted) setNotice("loadFailed");
         })
         .finally(() => {
           if (mounted) setLoading(false);
@@ -114,9 +124,14 @@ export function PoolDashboard({
   }, []);
   async function refresh() {
     setLoading(true);
-    setNotice("");
+    setNotice(null);
     try {
-      const data = await revalidatePools();
+      const response = await revalidatePools();
+      if (response.error !== undefined) {
+        setNotice("ownerRequired");
+        return;
+      }
+      const data = response.results;
       lastResults = data;
       lastLoadedAt = Date.now();
       setResults(data);
@@ -124,11 +139,11 @@ export function PoolDashboard({
       setToday(zagrebDate());
       setNotice(
         data.some((r) => !r.data || r.data.stale)
-          ? "Neki rasporedi nisu ažurirani. Dostupne podatke i izvore možete pregledati u nastavku."
-          : "Rasporedi su provjereni. Ponovni dohvat ograničen je na jednom u minuti.",
+          ? "partialRefresh"
+          : "refreshed",
       );
     } catch {
-      setNotice("Osvježavanje nije uspjelo. Prethodni raspored je sačuvan.");
+      setNotice("refreshFailed");
     } finally {
       setLoading(false);
     }
@@ -181,7 +196,7 @@ export function PoolDashboard({
     .flatMap((r) => (r.data ? [r.data.fetchedAt] : []))
     .sort()[0];
   const failures = results.filter((r) => !r.data || r.data.stale);
-  const dateLabel = `${week.monday.slice(0, 6)} – ${week.sunday}`;
+  const dateLabel = weekLabel(week.monday, week.sunday, language);
   function changeWeek(index: number) {
     setWeekIndex(index);
     setSelectedSlot(null);
@@ -210,7 +225,7 @@ export function PoolDashboard({
               <span>Zagreb</span>
             </span>
           </Link>
-          <nav aria-label="Prikaz rasporeda">
+          <nav aria-label={t.scheduleNavigation}>
             {NAV.map(({ href, label, mode: item, Icon }) => (
               <Link
                 prefetch={false}
@@ -219,56 +234,52 @@ export function PoolDashboard({
                 aria-current={mode === item ? "page" : undefined}
               >
                 <Icon size={16} />
-                {label}
+                {t[label]}
               </Link>
             ))}
           </nav>
-          <Button
-            variant="outline"
-            onClick={refresh}
-            disabled={loading}
-            className="refresh-button"
-            aria-label={loading ? "Učitavanje" : "Osvježi podatke"}
-          >
-            <RefreshCw className={loading ? "animate-spin" : ""} />
-            <span>{loading ? "Učitavanje" : "Osvježi podatke"}</span>
-          </Button>
+          <div className="header-actions">
+            <LanguageSwitcher />
+            {canRefresh && (
+              <Button
+                variant="outline"
+                onClick={refresh}
+                disabled={loading}
+                className="refresh-button"
+                aria-label={loading ? t.loading : t.refresh}
+              >
+                <RefreshCw className={loading ? "animate-spin" : ""} />
+                <span>{loading ? t.loading : t.refresh}</span>
+              </Button>
+            )}
+          </div>
         </div>
       </header>
       <main className="app-main">
         <section className="page-intro">
           <div>
-            <h1>
-              {mode === "agenda" ? "Dnevni pregled" : "Raspored plivanja"}
-            </h1>
-            <p>
-              {mode === "agenda"
-                ? "Odaberi dan i pronađi svoj termin."
-                : "Jedan bazen ili cijeli grad. Tvoj tjedan za plivanje."}
-            </p>
+            <h1>{mode === "agenda" ? t.agenda : t.scheduleTitle}</h1>
+            <p>{mode === "agenda" ? t.agendaIntro : t.calendarIntro}</p>
           </div>
           <div className="intro-side">
             <span className={`live-dot ${loading ? "pending" : ""}`} />
             {loading
-              ? "Provjeravamo službene rasporede"
+              ? t.checking
               : fetched
-                ? `Provjereno ${new Date(fetched).toLocaleString("hr-HR", { timeZone: "Europe/Zagreb", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}`
-                : "Rasporedi se dohvaćaju na zahtjev"}
+                ? `${t.checked} ${new Date(fetched).toLocaleString(LOCALES[language], { timeZone: "Europe/Zagreb", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}`
+                : t.onDemand}
           </div>
         </section>
         {notice && (
           <div className="status-callout" role="status">
             <Info size={16} />
-            {notice}
+            {t[notice]}
           </div>
         )}
         {!loading && failures.length > 0 && (
           <div className="status-callout warning" role="status">
             <Info size={16} />
-            {failures.length}{" "}
-            {failures.length === 1 ? "raspored treba" : "rasporeda trebaju"}{" "}
-            provjeru. Dostupni rasporedi su prikazani; za ostale otvorite
-            službeni izvor.
+            {t.failures(failures.length)}
           </div>
         )}
         <div className="schedule-toolbar">
@@ -276,7 +287,7 @@ export function PoolDashboard({
             <Button
               variant="outline"
               size="icon"
-              aria-label="Prethodni tjedan"
+              aria-label={t.previousWeek}
               disabled={weekIndex === 0}
               onClick={() => changeWeek(0)}
             >
@@ -284,19 +295,19 @@ export function PoolDashboard({
             </Button>
             <div>
               <strong>{dateLabel}</strong>
-              <span>{weekIndex === 0 ? "Ovaj tjedan" : "Sljedeći tjedan"}</span>
+              <span>{weekIndex === 0 ? t.currentWeek : t.nextWeek}</span>
             </div>
             <Button
               variant="outline"
               size="icon"
-              aria-label="Sljedeći tjedan"
+              aria-label={t.nextWeek}
               disabled={weekIndex === 1}
               onClick={() => changeWeek(1)}
             >
               <ChevronRight />
             </Button>
           </div>
-          <div className="type-switch" aria-label="Vrsta bazena">
+          <div className="type-switch" aria-label={t.poolType}>
             {(["olympic", "small", "children", "diving", "all"] as const).map(
               (value) => (
                 <button
@@ -308,26 +319,26 @@ export function PoolDashboard({
                   }}
                 >
                   {value === "all"
-                    ? "Sve vrste"
+                    ? t.allTypes
                     : value === "diving"
-                      ? "Skokovi"
+                      ? t.divingFilter
                       : value === "small"
-                        ? "Mali bazen"
-                        : TYPE_LABELS[value]}
+                        ? t.smallFilter
+                        : t.poolTypes[value]}
                 </button>
               ),
             )}
           </div>
         </div>
         {mode === "calendar" ? (
-          <div className="pool-tabs" aria-label="Odaberite objekt">
+          <div className="pool-tabs" aria-label={t.chooseFacility}>
             <button
               className="all-pools-tab"
               aria-pressed={showAll}
               onClick={() => selectPool("all")}
             >
               <Layers size={14} />
-              Svi objekti
+              {t.allFacilities}
             </button>
             {catalog.map((pool) => (
               <button
@@ -348,13 +359,13 @@ export function PoolDashboard({
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Pronađi bazen…"
-                aria-label="Pronađi bazen"
+                placeholder={`${t.findPool}…`}
+                aria-label={t.findPool}
               />
             </label>
-            <span>{visible.length} objekata</span>
+            <span>{t.facilities(visible.length)}</span>
             {hiddenPools.length > 0 && (
-              <button onClick={() => setHiddenPools([])}>Prikaži sve</button>
+              <button onClick={() => setHiddenPools([])}>{t.showAll}</button>
             )}
           </div>
         )}
@@ -368,9 +379,9 @@ export function PoolDashboard({
                   aria-pressed={activeDate === iso}
                   onClick={() => setSelectedDate(iso)}
                 >
-                  <span>{info.name.slice(0, 3)}</span>
+                  <span>{weekday(info.date, language, "short")}</span>
                   <b>{info.date.slice(0, 2)}</b>
-                  {iso === today && <small>Danas</small>}
+                  {iso === today && <small>{t.today}</small>}
                 </button>
               );
             })}
@@ -406,9 +417,11 @@ export function PoolDashboard({
           {mode === "calendar" && (
             <aside className="pool-sidebar">
               <div className="sidebar-heading">
-                <h2>{showAll ? "Objekti u kalendaru" : "Bazeni u gradu"}</h2>
+                <h2>{showAll ? t.calendarFacilities : t.cityPools}</h2>
                 <span>
-                  {showAll ? calendarPools.length : catalog.length} objekata
+                  {t.facilities(
+                    showAll ? calendarPools.length : catalog.length,
+                  )}
                 </span>
               </div>
               <div className="pool-source-list">
@@ -423,14 +436,14 @@ export function PoolDashboard({
                     : selectedPool === pool.id;
                   const status =
                     loading && !result
-                      ? "Učitavanje…"
+                      ? `${t.loading}…`
                       : result?.error
-                        ? "Provjerite izvor"
+                        ? t.checkSource
                         : day?.status === "open"
-                          ? "Danas ima termina"
+                          ? t.slotsToday
                           : day?.status === "closed"
-                            ? "Danas zatvoreno"
-                            : "Termini nisu potvrđeni";
+                            ? t.closedToday
+                            : t.unconfirmed;
                   return (
                     <div
                       className={`pool-source-row ${visible ? "selected" : ""}`}
@@ -446,7 +459,7 @@ export function PoolDashboard({
                         <label className="pool-visibility-label">
                           <input
                             type="checkbox"
-                            aria-label={`Prikaži ${pool.shortName}`}
+                            aria-label={`${t.show} ${pool.shortName}`}
                             checked={visible}
                             onChange={() => {
                               setHiddenPools((ids) =>
@@ -478,7 +491,7 @@ export function PoolDashboard({
                       )}
                       <button
                         className="isolate-pool"
-                        aria-label={`Izdvoji ${pool.shortName}`}
+                        aria-label={`${t.isolate} ${pool.shortName}`}
                         onClick={() => selectPool(pool.id)}
                       >
                         <ChevronRight size={15} />
@@ -490,14 +503,9 @@ export function PoolDashboard({
               {showAll && (
                 <div className="overlap-help">
                   <Layers size={20} />
-                  <h3>Svi termini, u slojevima.</h3>
-                  <p>
-                    Boje povezuju objekte i termine. Prijeđi preko boje za
-                    isticanje ili klikni termin za detalje.
-                  </p>
-                  <p>
-                    Isključi objekt kvačicom, a strelicom izdvoji samo jedan.
-                  </p>
+                  <h3>{t.overlapTitle}</h3>
+                  <p>{t.overlapHelp}</p>
+                  <p>{t.overlapControls}</p>
                 </div>
               )}
               {selected && (
@@ -514,39 +522,41 @@ export function PoolDashboard({
                     <p>
                       {selected.name}
                       <br />
-                      {selected.area}
+                      {areaName(selected.area, language)}
                     </p>
                     <a href={selected.url} target="_blank" rel="noreferrer">
-                      Otvori službeni raspored <ArrowUpRight size={15} />
+                      {t.openSource} <ArrowUpRight size={15} />
                     </a>
                     {activeResult?.error && (
-                      <p className="source-error">{activeResult.error}</p>
+                      <p className="source-error">{t.sourceUnavailable}</p>
                     )}
                     {activeResult?.data?.stale && (
-                      <p className="source-error">
-                        Prikazujemo raniji raspored. Nova provjera nije uspjela.
-                      </p>
+                      <p className="source-error">{t.stale}</p>
                     )}
-                    {activeResult?.data?.availability.alerts.map((text, i) => (
-                      <p className="source-alert" key={i}>
-                        <Info size={14} />
-                        {text}
-                      </p>
-                    ))}
+                    {activeResult?.data &&
+                      sourceTexts(
+                        activeResult.data.availability.alerts,
+                        activeResult.data.availability.alertsEn,
+                        language,
+                      ).map((text, i) => (
+                        <p className="source-alert" key={i}>
+                          <Info size={14} />
+                          {text}
+                        </p>
+                      ))}
                   </div>
                 </>
               )}
               <p className="source-note">
                 <Info size={15} />
-                Plan se može promijeniti. Provjeri službeni raspored prije
-                dolaska.
+                {t.sourceNote}
               </p>
             </aside>
           )}
         </div>
         {mode !== "calendar" && (
           <div className="pool-visibility">
-            <span>Prikaz objekata</span>
+            <span>{t.facilityVisibility}</span>
             {catalog.map((pool) => (
               <label key={pool.id}>
                 <input
@@ -568,24 +578,34 @@ export function PoolDashboard({
         {mode !== "calendar" &&
           results.some((r) => r.data?.availability.alerts.length) && (
             <section className="notices-section">
-              <h2>Važne obavijesti</h2>
+              <h2>{t.importantNotices}</h2>
               {results
                 .filter((r) => visible.some((p) => p.id === r.pool.id))
                 .flatMap(
                   (r) =>
-                    r.data?.availability.alerts.map((alert, i) => (
-                      <p key={`${r.pool.id}-${i}`}>
-                        <strong>{r.pool.shortName}</strong> {alert}
-                      </p>
-                    )) ?? [],
+                    (r.data &&
+                      sourceTexts(
+                        r.data.availability.alerts,
+                        r.data.availability.alertsEn,
+                        language,
+                      ).map((alert, i) => (
+                        <p key={`${r.pool.id}-${i}`}>
+                          <strong>{r.pool.shortName}</strong> {alert}
+                        </p>
+                      ))) ??
+                    [],
                 )}
             </section>
           )}
         {mode === "calendar" &&
         activeResult?.data?.availability.notices.length ? (
           <section className="notices-section">
-            <h2>Dobro je znati</h2>
-            {activeResult.data.availability.notices.map((text, i) => (
+            <h2>{t.goodToKnow}</h2>
+            {sourceTexts(
+              activeResult.data.availability.notices,
+              activeResult.data.availability.noticesEn,
+              language,
+            ).map((text, i) => (
               <p key={i}>{text}</p>
             ))}
           </section>
@@ -593,12 +613,20 @@ export function PoolDashboard({
         <footer className="app-footer">
           <span>
             <Waves size={17} />
-            Zagreb, vidimo se na plivanju.
+            {t.footer}
           </span>
           <span>
-            Vrijeme u Zagrebu ·{" "}
+            {t.zagrebTime} ·{" "}
+            {canRefresh && (
+              <>
+                <Link href="/owner" prefetch={false}>
+                  {t.ownerAccess}
+                </Link>{" "}
+                ·{" "}
+              </>
+            )}
             <a href="/api/openapi" target="_blank" rel="noreferrer">
-              API za agente <ExternalLink size={11} />
+              {t.agentApi} <ExternalLink size={11} />
             </a>
           </span>
         </footer>

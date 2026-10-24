@@ -32,7 +32,7 @@ export async function getPoolData(
 ): Promise<PoolData> {
   const pool = POOLS.find((p) => p.id === poolId);
   if (!pool) throw new Error(`Pool not found: ${poolId}`);
-  const scope = `luna-v3:${getWeekDates().currentWeek.monday}`;
+  const scope = `luna-v4-bilingual:${getWeekDates().currentWeek.monday}`;
   const result = await cache.get(
     poolId,
     scope,

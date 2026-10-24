@@ -8,6 +8,8 @@ export const POOL_COLORS = {
   orange: { main: "#c48235", tint: "#fbeddc", ink: "#85551d" },
   green: { main: "#5a964a", tint: "#e9f2e1", ink: "#3f6c31" },
   pink: { main: "#bb6f8c", tint: "#f8e6ed", ink: "#873e5b" },
+  indigo: { main: "#5968b3", tint: "#eceefa", ink: "#3f4c88" },
+  red: { main: "#c16450", tint: "#fcece5", ink: "#8c4436" },
 } as const;
 export function poolColorStyle(color: string): CSSProperties {
   const palette =

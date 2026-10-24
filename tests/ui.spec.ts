@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { POOLS } from "../src/lib/pools";
 import { getWeekDates, type DayInfo } from "../src/lib/dates";
+import type { WeekSchedule } from "../src/lib/ai";
 function fixture() {
   const weeks = getWeekDates();
   return {
@@ -16,7 +17,7 @@ function fixture() {
           poolName: pool.name,
           alerts: [],
           notices: [],
-          ...Object.fromEntries(
+          ...(Object.fromEntries(
             Object.entries(weeks).map(([key, week]) => [
               key,
               {
@@ -25,26 +26,30 @@ function fixture() {
                 days: week.days.map((d: DayInfo) => ({
                   day: d.name,
                   date: d.date,
-                  status:
-                    pool.id === "zimsko-plivaliste-mladost" ? "closed" : "open",
+                  status: ["zimsko-plivaliste-mladost", "src-salata"].includes(
+                    pool.id,
+                  )
+                    ? "closed"
+                    : "open",
                   isHoliday: false,
-                  pools:
-                    pool.id === "zimsko-plivaliste-mladost"
-                      ? []
-                      : [
-                          {
-                            poolType: "olympic",
-                            slots: [{ hours: "06:30 - 20:00" }],
-                          },
-                          {
-                            poolType: "small",
-                            slots: [{ hours: "06:30 - 21:30" }],
-                          },
-                        ],
+                  pools: ["zimsko-plivaliste-mladost", "src-salata"].includes(
+                    pool.id,
+                  )
+                    ? []
+                    : [
+                        {
+                          poolType: "olympic",
+                          slots: [{ hours: "06:30 - 20:00" }],
+                        },
+                        {
+                          poolType: "small",
+                          slots: [{ hours: "06:30 - 21:30" }],
+                        },
+                      ],
                 })),
               },
             ]),
-          ),
+          ) as Record<"currentWeek" | "nextWeek", WeekSchedule>),
         },
       },
     })),
@@ -152,7 +157,7 @@ test("all-pool overlap shares colors with sidebar, filters facilities and shows 
     page.getByRole("region", { name: "Tjedni kalendar: svi objekti" }),
   ).toBeVisible();
   const events = page.locator(".swim-event");
-  await expect(events).toHaveCount(35);
+  await expect(events).toHaveCount(42);
   const firstDayRects = await page
     .locator(".time-day")
     .first()
@@ -163,12 +168,14 @@ test("all-pool overlap shares colors with sidebar, filters facilities and shows 
         return { left: rect.left, right: rect.right, top: rect.top };
       }),
     );
-  expect(firstDayRects).toHaveLength(5);
+  expect(firstDayRects).toHaveLength(6);
   expect(firstDayRects[0].top).toBe(firstDayRects[1].top);
   expect(Math.max(firstDayRects[0].left, firstDayRects[1].left)).toBeLessThan(
     Math.min(firstDayRects[0].right, firstDayRects[1].right),
   );
-  for (const pool of POOLS.slice(0, 5)) {
+  for (const pool of POOLS.filter(
+    (p) => !["zimsko-plivaliste-mladost", "src-salata"].includes(p.id),
+  )) {
     const border = await events
       .filter({ has: page.locator("strong", { hasText: pool.shortName }) })
       .first()
@@ -179,7 +186,7 @@ test("all-pool overlap shares colors with sidebar, filters facilities and shows 
     expect(border).toBe(dot);
   }
   await page.getByRole("button", { name: "Sve vrste", exact: true }).click();
-  await expect(events).toHaveCount(70);
+  await expect(events).toHaveCount(84);
   const railPositions = await page
     .locator(".time-day")
     .first()
@@ -187,7 +194,7 @@ test("all-pool overlap shares colors with sidebar, filters facilities and shows 
     .evaluateAll((elements) =>
       elements.map((el) => (el as HTMLElement).style.left),
     );
-  expect(new Set(railPositions).size).toBe(10);
+  expect(new Set(railPositions).size).toBe(12);
   await page.getByRole("button", { name: "Veliki bazen", exact: true }).click();
   await page
     .getByRole("checkbox", { name: "Prikaži Špansko", exact: true })
@@ -195,7 +202,7 @@ test("all-pool overlap shares colors with sidebar, filters facilities and shows 
   await expect(
     page.locator('.swim-event[data-pool-id="bazen-spansko"]'),
   ).toHaveCount(0);
-  await expect(events).toHaveCount(28);
+  await expect(events).toHaveCount(35);
   await page
     .locator('.swim-event[data-pool-id="bazenski-kompleks-utrina"]')
     .first()
@@ -270,9 +277,9 @@ test("source failure is presented as unknown, preserves facilities and links", a
   );
   await page.goto("/calendar");
   await expect(
-    page.getByText("6 rasporeda trebaju provjeru.", { exact: false }),
+    page.getByText("8 rasporeda trebaju provjeru.", { exact: false }),
   ).toBeVisible();
-  await expect(page.locator(".pool-source-row")).toHaveCount(6);
+  await expect(page.locator(".pool-source-row")).toHaveCount(8);
   await expect(page.locator(".no-event").first()).toContainText(
     "Nema potvrđenih termina",
   );
@@ -285,7 +292,7 @@ test("API catalog/OpenAPI and validation paths do not need an extraction", async
 }) => {
   const catalog = await request.get("/api/pools/catalog");
   expect(catalog.status()).toBe(200);
-  expect((await catalog.json()).pools).toHaveLength(6);
+  expect((await catalog.json()).pools).toHaveLength(8);
   const schema = await request.get("/api/openapi");
   expect(schema.status()).toBe(200);
   expect((await schema.json()).paths["/pools/refresh"].post.security).toEqual([
@@ -297,4 +304,321 @@ test("API catalog/OpenAPI and validation paths do not need an extraction", async
   expect(
     (await request.post("/api/pools/refresh", { data: {} })).status(),
   ).toBe(401);
+});
+
+test("Iver has its official source and Šalata can show a seasonal closure", async ({
+  page,
+}) => {
+  await page.route("**/api/pools", (route) =>
+    route.fulfill({ json: fixture() }),
+  );
+  await page.goto("/calendar");
+  await page
+    .locator(".pool-tabs")
+    .getByRole("button", { name: "Iver", exact: true })
+    .click();
+  await expect(page.locator(".swim-event").first()).toContainText("Iver");
+  await expect(
+    page.getByRole("link", { name: "Otvori službeni raspored" }),
+  ).toHaveAttribute("href", POOLS.find((p) => p.id === "bazen-iver")!.url);
+  await page
+    .locator(".pool-tabs")
+    .getByRole("button", { name: "Šalata", exact: true })
+    .click();
+  await expect(page.locator(".swim-event")).toHaveCount(0);
+  await expect(page.locator(".no-event").first()).toContainText("Zatvoreno");
+  await expect(
+    page.getByRole("link", { name: "Otvori službeni raspored" }),
+  ).toHaveAttribute("href", POOLS.find((p) => p.id === "src-salata")!.url);
+});
+
+test("only the signed-in owner sees refresh; invalid keys fail and logout removes access", async ({
+  page,
+  context,
+}) => {
+  await page.route("**/api/pools", (route) =>
+    route.fulfill({ json: fixture() }),
+  );
+  await page.goto("/calendar");
+  await expect(page.locator(".refresh-button")).toHaveCount(0);
+  await page.goto("/owner");
+  await expect(
+    page.getByRole("heading", { name: "Vlasnički pristup" }),
+  ).toBeVisible();
+  await page.getByLabel("Ključ za osvježavanje").fill("wrong-key");
+  await page.getByRole("button", { name: "Omogući osvježavanje" }).click();
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    "Ključ nije ispravan",
+  );
+  expect(
+    (await context.cookies()).find((c) => c.name === "pools-owner"),
+  ).toBeUndefined();
+
+  await page
+    .getByLabel("Ključ za osvježavanje")
+    .fill("playwright-only-owner-key");
+  await page.getByRole("button", { name: "Omogući osvježavanje" }).click();
+  await expect(page).toHaveURL(/\/calendar$/);
+  await expect(
+    page.getByRole("button", { name: "Osvježi podatke", exact: true }),
+  ).toBeEnabled();
+  const cookie = (await context.cookies()).find(
+    (c) => c.name === "pools-owner",
+  )!;
+  expect(cookie.httpOnly).toBe(true);
+  expect(cookie.sameSite).toBe("Strict");
+  expect(cookie.value).not.toContain("playwright-only-owner-key");
+  await page.getByRole("link", { name: "Vlasnički pristup" }).click();
+  await expect(
+    page.getByText("Ručno osvježavanje je omogućeno u ovom pregledniku."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Odjavi se" }).click();
+  await expect(page).toHaveURL(/\/calendar$/);
+  await expect(page.locator(".refresh-button")).toHaveCount(0);
+  expect(
+    (await context.cookies()).find((c) => c.name === "pools-owner"),
+  ).toBeUndefined();
+});
+
+test("a direct refresh action call without the owner cookie is denied before extraction", async ({
+  page,
+  request,
+}) => {
+  await page.route("**/api/pools", (route) =>
+    route.fulfill({ json: fixture() }),
+  );
+  await page.goto("/owner");
+  await page
+    .getByLabel("Ključ za osvježavanje")
+    .fill("playwright-only-owner-key");
+  await page.getByRole("button", { name: "Omogući osvježavanje" }).click();
+  await expect(page).toHaveURL(/\/calendar$/);
+  await expect(
+    page.getByRole("button", { name: "Osvježi podatke", exact: true }),
+  ).toBeEnabled();
+
+  // Capture the real action ID without allowing this test to scrape sources.
+  await page.route("**/calendar", (route) =>
+    route.request().headers()["next-action"] ? route.abort() : route.continue(),
+  );
+  const actionRequest = page.waitForRequest(
+    (req) => !!req.headers()["next-action"],
+  );
+  await page
+    .getByRole("button", { name: "Osvježi podatke", exact: true })
+    .click();
+  const captured = await actionRequest;
+  const response = await request.post("/calendar", {
+    headers: {
+      "Next-Action": captured.headers()["next-action"],
+      "Content-Type": "text/plain;charset=UTF-8",
+      Origin: "http://127.0.0.1:3017",
+    },
+    data: captured.postData()!,
+  });
+  expect(response.status()).toBe(200);
+  expect(await response.text()).toContain("owner_required");
+});
+
+test("a raw API key in the session cookie does not unlock the owner button", async ({
+  page,
+  context,
+}) => {
+  await context.addCookies([
+    {
+      name: "pools-owner",
+      value: "playwright-only-owner-key",
+      url: "http://127.0.0.1:3017",
+    },
+  ]);
+  await page.route("**/api/pools", (route) =>
+    route.fulfill({ json: fixture() }),
+  );
+  await page.goto("/calendar");
+  await expect(page.locator(".refresh-button")).toHaveCount(0);
+});
+
+test("HTTP language preferences select translated HTML and metadata before JavaScript", async ({
+  request,
+}) => {
+  for (const [header, language, title] of [
+    ["en-US,en;q=0.9", "en", "Swimming schedules"],
+    ["hr-HR,hr;q=0.9,en;q=0.8", "hr", "Raspored plivanja"],
+    ["hr;q=0.4,en-GB;q=0.9", "en", "Swimming schedules"],
+    ["de-DE,de;q=0.9,hr;q=0.8", "hr", "Raspored plivanja"],
+    ["de-DE,fr;q=0.8", "en", "Swimming schedules"],
+  ]) {
+    const response = await request.get("/calendar", {
+      headers: { "Accept-Language": header },
+    });
+    expect(response.status()).toBe(200);
+    const html = await response.text();
+    expect(html).toContain(`<html lang="${language}">`);
+    expect(html).toContain(`<title>Bazeni Zagreb · ${title}</title>`);
+  }
+});
+
+test("switching language preserves selection, uses cached schedules, and persists across pages and reloads", async ({
+  page,
+  context,
+}) => {
+  let reads = 0;
+  await page.route("**/api/pools", (route) => {
+    reads++;
+    return route.fulfill({ json: fixture() });
+  });
+  await page.goto("/calendar");
+  await expect(page.locator("html")).toHaveAttribute("lang", "hr");
+  await expect(page.locator(".swim-event").first()).toBeVisible();
+  await page
+    .locator(".pool-tabs")
+    .getByRole("button", { name: "Iver", exact: true })
+    .click();
+  await page.locator(".swim-event").first().click();
+  expect(reads).toBe(1);
+  await page
+    .getByRole("button", { name: "Switch to English", exact: true })
+    .click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(
+    page.getByRole("heading", { name: "Swimming schedules", exact: true }),
+  ).toBeVisible();
+  await expect(page).toHaveTitle("Bazeni Zagreb · Swimming schedules");
+  await expect(page.locator(".day-heading span").first()).toHaveText("Mon");
+  await expect(
+    page.getByRole("region", { name: "Swim time details" }),
+  ).toContainText("Iver");
+  await expect(
+    page.getByRole("region", { name: "Swim time details" }),
+  ).toContainText("Main pool");
+  expect(reads).toBe(1);
+  expect(
+    (await context.cookies()).find((c) => c.name === "pools-language")?.value,
+  ).toBe("en");
+  await page.getByRole("link", { name: "Daily agenda", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Daily agenda", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(
+    page.getByRole("textbox", { name: "Find a pool" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Prebaci na hrvatski", exact: true })
+    .click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "hr");
+  await expect(
+    page.getByRole("heading", { name: "Dnevni pregled", exact: true }),
+  ).toBeVisible();
+});
+
+test("an English browser gets translated notices, lane restrictions, errors and owner access", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    locale: "en-US",
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await context.newPage();
+  const data = fixture();
+  const pool = data.results[0].data;
+  Object.assign(pool.availability, {
+    alerts: ["Bazen radi skraćeno"],
+    alertsEn: ["Reduced swimming hours"],
+    notices: ["Kapa je obavezna"],
+    noticesEn: ["A swimming cap is required"],
+  });
+  for (const day of [
+    ...pool.availability.currentWeek.days,
+    ...pool.availability.nextWeek.days,
+  ]) {
+    Object.assign(day, {
+      reason: "Dio bazena je zatvoren",
+      reasonEn: "Part of the pool is closed",
+    });
+    for (const group of day.pools) {
+      for (const slot of group.slots)
+        Object.assign(slot, { lanes: "3 pruge", lanesEn: "3 lanes" });
+    }
+  }
+  await page.route("**/api/pools", (route) => route.fulfill({ json: data }));
+  await page.goto("/calendar");
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(
+    page.getByText("Reduced swimming hours", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("A swimming cap is required", { exact: true }),
+  ).toBeVisible();
+  await page.locator(".swim-event").first().click();
+  await expect(
+    page.getByRole("region", { name: "Swim time details" }),
+  ).toContainText("3 lanes");
+  await expect(
+    page.getByRole("region", { name: "Swim time details" }),
+  ).toContainText("Part of the pool is closed");
+  await page.getByRole("button", { name: "Close swim time details" }).click();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+    .toBe(390);
+  await page.getByRole("link", { name: "Daily agenda", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: "Swim times by pool" }),
+  ).toContainText("3 lanes");
+  await page.goto("/owner");
+  await expect(
+    page.getByRole("heading", { name: "Owner access" }),
+  ).toBeVisible();
+  await expect(page).toHaveTitle("Owner access · Bazeni Zagreb");
+  await page.getByLabel("Refresh key").fill("wrong-key");
+  await page.getByRole("button", { name: "Enable refresh" }).click();
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    "That key is incorrect",
+  );
+  await page.getByLabel("Refresh key").fill("playwright-only-owner-key");
+  await page.getByRole("button", { name: "Enable refresh" }).click();
+  await expect(page).toHaveURL(/\/calendar$/);
+  await expect(
+    page.getByRole("button", { name: "Refresh schedules", exact: true }),
+  ).toBeEnabled();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+    .toBe(390);
+  await context.close();
+});
+
+test("English source failures remain understandable without Croatian error text", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({ locale: "en-US" });
+  const page = await context.newPage();
+  await page.route("**/api/pools", (route) =>
+    route.fulfill({
+      status: 503,
+      json: {
+        results: POOLS.map((pool) => ({
+          pool,
+          data: null,
+          error: "Raspored nije dostupan.",
+        })),
+      },
+    }),
+  );
+  await page.goto("/calendar");
+  await expect(
+    page.getByText("8 schedules need checking.", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "The schedule is currently unavailable. Check the official source.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.locator(".no-event").first()).toContainText(
+    "No confirmed swim times",
+  );
+  await context.close();
 });

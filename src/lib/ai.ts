@@ -10,14 +10,22 @@ import {
 
 export const PARSER_MODEL = "gpt-6-luna";
 const PoolTypeSchema = z.enum(["olympic", "small", "children", "diving"]);
+const BilingualTextSchema = z.object({
+  hr: z.string().min(1).describe("Croatian text"),
+  en: z
+    .string()
+    .min(1)
+    .describe(
+      "English translation with exactly the same facts, dates and times",
+    ),
+});
 const SlotSchema = z.object({
   hours: z
     .string()
     .describe("Exactly HH:MM - HH:MM, one continuous interval per slot"),
-  lanes: z
-    .string()
-    .nullable()
-    .describe("Source lane restrictions/dimensions, or null"),
+  lanes: BilingualTextSchema.nullable().describe(
+    "Source lane restrictions/dimensions, or null",
+  ),
 });
 const PoolScheduleSchema = z.object({
   poolType: PoolTypeSchema,
@@ -26,25 +34,22 @@ const PoolScheduleSchema = z.object({
 const ParsedDaySchema = z.object({
   date: z.string().describe("Exact requested DD.MM.YYYY date"),
   status: z.enum(["open", "closed", "unknown"]),
-  reason: z
-    .string()
-    .nullable()
-    .describe(
-      "Croatian closure reason, dated exception, or why hours are unknown; null for ordinary hours",
-    ),
+  reason: BilingualTextSchema.nullable().describe(
+    "Closure reason, dated exception, or why hours are unknown, in both languages; null for ordinary hours",
+  ),
   pools: z.array(PoolScheduleSchema),
 });
 export const ExtractionSchema = z.object({
   days: z.array(ParsedDaySchema).length(14),
   alerts: z
-    .array(z.string())
+    .array(BilingualTextSchema)
     .describe(
-      "Current actionable notices in Croatian, including partial closures with dates; no expired alerts",
+      "Current actionable notices in both languages, including partial closures with dates; no expired alerts",
     ),
   notices: z
-    .array(z.string())
+    .array(BilingualTextSchema)
     .describe(
-      "Relevant pool entry rules in Croatian; no contact details, class schedules or wellness rules",
+      "Relevant pool entry rules in both languages; no contact details, class schedules or wellness rules",
     ),
 });
 export type Extraction = z.infer<typeof ExtractionSchema>;
@@ -56,7 +61,11 @@ export interface DaySchedule {
   holidayName?: string;
   status: "open" | "closed" | "unknown";
   reason?: string;
-  pools: { poolType: PoolType; slots: { hours: string; lanes?: string }[] }[];
+  reasonEn?: string;
+  pools: {
+    poolType: PoolType;
+    slots: { hours: string; lanes?: string; lanesEn?: string }[];
+  }[];
 }
 export interface WeekSchedule {
   weekStart: string;
@@ -68,7 +77,9 @@ export interface PoolAvailability {
   currentWeek: WeekSchedule;
   nextWeek: WeekSchedule;
   alerts: string[];
+  alertsEn?: string[];
   notices: string[];
+  noticesEn?: string[];
   _debug?: { weeklySchedule: unknown; overrides: unknown };
 }
 export function intervalMinutes(hours: string): [number, number] | null {
@@ -121,7 +132,9 @@ export function availabilityFromExtraction(
               );
             return {
               hours: slot.hours,
-              ...(slot.lanes ? { lanes: slot.lanes } : {}),
+              ...(slot.lanes
+                ? { lanes: slot.lanes.hr, lanesEn: slot.lanes.en }
+                : {}),
             };
           })
           .sort(
@@ -144,7 +157,9 @@ export function availabilityFromExtraction(
         status: parsed.status,
         isHoliday: !!holiday,
         ...(holiday ? { holidayName: holiday } : {}),
-        ...(parsed.reason ? { reason: parsed.reason } : {}),
+        ...(parsed.reason
+          ? { reason: parsed.reason.hr, reasonEn: parsed.reason.en }
+          : {}),
         pools,
       };
     }),
@@ -153,8 +168,10 @@ export function availabilityFromExtraction(
     poolName,
     currentWeek: makeWeek(weeks.currentWeek),
     nextWeek: makeWeek(weeks.nextWeek),
-    alerts: extraction.alerts,
-    notices: extraction.notices,
+    alerts: extraction.alerts.map((text) => text.hr),
+    alertsEn: extraction.alerts.map((text) => text.en),
+    notices: extraction.notices.map((text) => text.hr),
+    noticesEn: extraction.notices.map((text) => text.en),
   };
 }
 export async function parsePoolAvailability(
@@ -193,9 +210,10 @@ Rules:
 - A recurring timetable without a validity end remains valid unless superseded. When a temporary dated timetable ends, use an explicitly published regular timetable if present. If no timetable covers a date, status=unknown with explanation; do not extrapolate a dated PDF past its end.
 - Apply holidays using the supplied holiday facts. Named yearly holiday closures are recurring rules, not single-year notices. Distinguish closure of a pool from closure of wellness or a terrace. If holiday hours are not specified, status=unknown rather than assuming regular hours.
 - An ongoing construction closure means status=closed until explicit reopening, even if historical hours appear. For partial closures keep only available hours and explain restrictions. Prefer a specific dated modification over generic rules.
+- A dated end of the swimming season means status=closed after that date until a published reopening. Never reuse summer swimming hours outside that season, or confuse winter ice-skating hours with swimming. Respect the notice's year; do not carry an old season-end notice into a later year's season.
 - Špansko: public pool hours are different from Wellness. The large pool changes from 21:30 to 20:00 on 16 October 2026; preserve the small pool's separate finish time.
 - Jelkovec: the 12–31 October 2026 notice changes small-pool midday opening to 12:00; the older undated regular schedule says 10:00. Apply the dated notice only during its interval. Christmas/New Year/Easter/All Saints closures override holiday-hour rules.
-- Output concise Croatian alerts/reasons. If the source is ambiguous mark unknown and explain; never silently resolve uncertainty into open/closed.
+- Output every reason, alert, notice and lane restriction as paired Croatian (hr) and English (en) text. Translate the same facts faithfully, including every restriction, number, date and time; retain proper facility names. Do not add advice or facts in either language. If the source is ambiguous mark unknown and explain in both languages; never silently resolve uncertainty into open/closed.
 
 <official-source>\n${rawContent}\n</official-source>`,
   });

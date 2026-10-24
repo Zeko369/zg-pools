@@ -7,11 +7,16 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:3017",
     viewport: { width: 1440, height: 1000 },
     headless: true,
+    locale: "hr-HR",
   },
   webServer: {
     command: "bun run dev --port 3017",
     url: "http://127.0.0.1:3017/calendar",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
+    env: {
+      OPENAI_API_KEY: "",
+      POOLS_API_SECRET: "playwright-only-owner-key",
+    },
     timeout: 60_000,
   },
 });

@@ -62,6 +62,22 @@ export const POOLS: Pool[] = [
     color: "pink",
     url: "https://www.sportskiobjekti.hr/zimsko-plivaliste-mladost/1369?tab=1493",
   },
+  {
+    id: "bazen-iver",
+    name: "Bazen Iver",
+    shortName: "Iver",
+    area: "Sesvetski Kraljevec",
+    color: "indigo",
+    url: "https://www.sportskiobjekti.hr/bazen-iver-1388/1388",
+  },
+  {
+    id: "src-salata",
+    name: "SRC Šalata",
+    shortName: "Šalata",
+    area: "Šalata",
+    color: "red",
+    url: "https://www.sportskiobjekti.hr/sportsko-rekreacijski-centar-salata/1346?tab=1361",
+  },
 ];
 const MAX_SOURCE_SIZE = 3_000_000;
 async function sourceResponse(url: string) {

@@ -46,6 +46,7 @@ const schemas = {
     properties: {
       hours: { type: "string", pattern: "^\\d{2}:\\d{2} - \\d{2}:\\d{2}$" },
       lanes: { type: "string" },
+      lanesEn: { type: "string", description: "English translation of lanes" },
     },
   },
   Day: {
@@ -63,6 +64,10 @@ const schemas = {
       isHoliday: { type: "boolean" },
       holidayName: { type: "string" },
       reason: { type: "string" },
+      reasonEn: {
+        type: "string",
+        description: "English translation of reason",
+      },
       pools: {
         type: "array",
         items: {
@@ -108,7 +113,17 @@ const schemas = {
       nextWeek: ref("Week"),
       day: ref("Day"),
       alerts: { type: "array", items: { type: "string" } },
+      alertsEn: {
+        type: "array",
+        items: { type: "string" },
+        description: "English alerts in the same order as alerts",
+      },
       notices: { type: "array", items: { type: "string" } },
+      noticesEn: {
+        type: "array",
+        items: { type: "string" },
+        description: "English notices in the same order as notices",
+      },
     },
   },
   Result: {
@@ -155,7 +170,7 @@ export function GET() {
     openapi: "3.1.0",
     info: {
       title: "Bazeni Zagreb — agent API",
-      version: "2.0.0",
+      version: "2.1.0",
       description:
         "Request-driven citizen swimming schedules extracted with GPT-6 Luna. No polling or scheduled jobs. First read/expired-cache read may take up to 150 seconds. Successful data is cached for one hour per server process; concurrent calls coalesce. Forced refreshes and failed retries have a 60-second cooldown. No stale previous-week data is returned.",
     },
