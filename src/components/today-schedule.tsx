@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import type { PoolType, WeekSchedule, DaySchedule } from "@/lib/ai";
 
 const POOL_TYPE_LABELS: Record<PoolType, string> = {
+  children: "Dječji bazen",
+  diving: "Bazen za skokove",
   olympic: "Olimpijski/Veliki",
   small: "Mali",
 };

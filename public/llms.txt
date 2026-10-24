@@ -1,0 +1,36 @@
+# Bazeni Zagreb
+
+> Public swimming schedules for Zagreb pools, extracted from official Sportski objekti pages and linked timetables. Use the JSON API for schedule questions and on-demand updates.
+
+All links below are relative to this site's origin unless an absolute URL is given. All times, today's date, holidays and Monday-to-Sunday week boundaries use Europe/Zagreb. Query dates use YYYY-MM-DD; schedule dates use DD.MM.YYYY. Only the current and next week are available.
+
+Agent workflow:
+- Start with the OpenAPI schema and pool catalog. These and this file do not scrape sources or invoke AI.
+- Fetch schedules only when answering a user request. GET schedule requests can trigger extraction on a cache miss. Prefer the single-pool endpoint when only one facility is needed.
+- Successful schedules are cached for one hour per server process. Concurrent requests share extraction work. Cache expiry does nothing until another request arrives; there is no scheduled refresh or polling.
+- For an explicitly requested fresh check, POST /api/pools/refresh with Authorization: Bearer <token> and Content-Type: application/json. The token must match the server's configured POOLS_API_SECRET; never put it in a URL. Send {"poolId":"bazen-spansko"} for one facility or {} for all. Forced refreshes and failed retries have a 60-second cooldown. Allow up to 180 seconds for a cold request.
+- Do not create recurring polling or background updates unless the user explicitly requests them.
+
+Response interpretation:
+- Schedule responses contain timezone, generatedAt, partial and results. Each result contains pool, data and error. A successful data object includes availability, fetchedAt, stale and model.
+- Inspect each result's error and stale fields, even on HTTP 200. Partial results may contain failed facilities. HTTP 503 means all requested facilities failed; 400 means invalid parameters, 404 an unknown pool, and 401 invalid or unconfigured refresh credentials.
+- availability contains currentWeek/nextWeek, or day for date/compact requests, plus alerts and notices. Read fetchedAt for freshness; generatedAt is the response time, not the source-check time.
+- A day's status is open, closed or unknown. open means published public-swimming slots exist for that date, not that the facility is open right now. unknown must not be reported as closed or open. Check slot times and dated alerts before recommending a visit.
+- Pool types are olympic (main/large pool, regardless of length), small (small/warm-up pool), children (children-only pool) and diving (diving pool). Slots contain HH:MM - HH:MM hours and optional lane restrictions.
+- If data is stale, unknown or unavailable, say so and offer the official source URL returned in the catalog. Earlier-week data is not reused for a new week. Do not invent missing hours or ignore holiday closures.
+
+## Documentation and discovery
+
+- [OpenAPI schema](/api/openapi): Authoritative API operations, parameters, pool IDs, response schemas and refresh authentication. No extraction.
+- [Pool catalog](/api/pools/catalog): Supported facilities and their official source URLs. No extraction.
+
+## Schedules on request
+
+- [All schedules](/api/pools): Current and next week for all facilities. Supports week=current, week=next or week=both (default).
+- [Today's schedules](/api/pools/today): Today's slots in Europe/Zagreb. The all-pools endpoint also supports compact=true.
+- [Single-pool example](/api/pools/bazen-spansko): Replace bazen-spansko with an ID from the catalog. Supports the same week, date and compact filters as the all-pools endpoint. Use date=YYYY-MM-DD for one date within the supported two-week horizon; date takes precedence over week and compact.
+
+## Optional
+
+- [Calendar](/calendar): Human-facing weekly view with individual facilities or all facilities overlapped. Prefer the JSON API for agent use.
+- [Daily agenda](/agenda): Human-facing day-by-day view.

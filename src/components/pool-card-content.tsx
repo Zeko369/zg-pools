@@ -34,6 +34,8 @@ interface PoolCardContentProps {
 }
 
 const POOL_TYPE_LABELS: Record<PoolType, string> = {
+  children: "Dječji bazen",
+  diving: "Bazen za skokove",
   olympic: "Olimpijski/Veliki",
   small: "Mali",
 };

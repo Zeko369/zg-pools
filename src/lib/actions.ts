@@ -1,7 +1,6 @@
 "use server";
-
-import { revalidateTag } from "next/cache";
-
+import { getPoolResults } from "./data";
+// Explicit same-origin UI action; RequestCache imposes the same cooldown as the agent API.
 export async function revalidatePools() {
-  revalidateTag("pools", "max");
+  return getPoolResults({ force: true });
 }
