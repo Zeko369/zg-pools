@@ -177,7 +177,7 @@ export function GET() {
       title: "Bazeni Zagreb — agent API",
       version: "2.3.0",
       description:
-        "Citizen swimming schedules extracted with GPT-6 Luna and persisted in Postgres. Public GET requests only read saved schedules and never invoke AI. A pg-boss worker checks relevant facility tab/PDF content every 15 minutes from 05:00 through 21:00 Europe/Zagreb. Unchanged source text reuses the extraction; changed text, a new week or parser version triggers AI. Owner checks share a cross-instance lock and 60-second cooldown. No previous-week data is returned for a new week.",
+        "Public swimming schedules for Zagreb pools, including swim times, lane restrictions, and closure notices for the current and next week. All dates and times use Europe/Zagreb.",
     },
     servers: [{ url: "/api" }],
     paths: {
