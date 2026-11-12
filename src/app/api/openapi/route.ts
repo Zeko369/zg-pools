@@ -140,11 +140,16 @@ const schemas = {
             properties: {
               pool: ref("Pool"),
               availability: ref("Availability"),
-              fetchedAt: { type: "string", format: "date-time" },
+              fetchedAt: {
+                type: "string",
+                format: "date-time",
+                description:
+                  "Last successful source check, including unchanged-content checks",
+              },
               stale: {
                 type: "boolean",
                 description:
-                  "A failed refresh retained earlier data from this week",
+                  "A failed source check or overdue background worker retained earlier data from this week",
               },
               model: { type: "string", const: "gpt-6-luna" },
             },
@@ -170,9 +175,9 @@ export function GET() {
     openapi: "3.1.0",
     info: {
       title: "Bazeni Zagreb — agent API",
-      version: "2.1.0",
+      version: "2.2.0",
       description:
-        "Request-driven citizen swimming schedules extracted with GPT-6 Luna. No polling or scheduled jobs. First read/expired-cache read may take up to 150 seconds. Successful data is cached for one hour per server process; concurrent calls coalesce. Forced refreshes and failed retries have a 60-second cooldown. No stale previous-week data is returned.",
+        "Citizen swimming schedules extracted with GPT-6 Luna and persisted in Postgres. Public GET requests only read saved schedules and never invoke AI. A pg-boss worker checks relevant facility tab/PDF content every 15 minutes from 05:00 through 21:00 Europe/Zagreb. Unchanged source text reuses the extraction; changed text, a new week or parser version triggers AI. Owner checks share a cross-instance lock and 60-second cooldown. No previous-week data is returned for a new week.",
     },
     servers: [{ url: "/api" }],
     paths: {
@@ -201,7 +206,7 @@ export function GET() {
       "/pools": {
         get: {
           operationId: "getPoolSchedules",
-          summary: "Read all schedules; refresh expired cache on demand",
+          summary: "Read all saved schedules from Postgres",
           parameters,
           responses,
         },
@@ -232,7 +237,8 @@ export function GET() {
       "/pools/refresh": {
         post: {
           operationId: "refreshPoolSchedules",
-          summary: "Request an update now (60-second cooldown per pool)",
+          summary:
+            "Check sources now; reuse unchanged extractions (60-second cooldown)",
           security: [{ bearerAuth: [] }],
           requestBody: {
             required: true,

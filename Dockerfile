@@ -17,7 +17,20 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # OPENAI_API_KEY not needed at build time - AI parsing happens at runtime
 RUN bun run build
 
-# Production
+# Background worker: separate from the web server, sharing the same Postgres.
+FROM base AS worker
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json tsconfig.json ./
+COPY src/lib ./src/lib
+COPY scripts ./scripts
+COPY db ./db
+RUN chown -R bun:bun /app
+USER bun
+CMD ["bun", "scripts/worker.ts"]
+
+# Production web server
 FROM base AS runner
 WORKDIR /app
 
