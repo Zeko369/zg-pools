@@ -8,7 +8,7 @@ Agent workflow:
 - Start with the OpenAPI schema and pool catalog. These and this file do not scrape sources or invoke AI.
 - GET schedule requests only read Postgres snapshots and never scrape or invoke AI. Prefer the single-pool endpoint when only one facility is needed. Missing snapshots return per-pool errors until the background worker has loaded them.
 - pg-boss checks each source every 15 minutes from 05:00 through 21:00 Europe/Zagreb. Relevant normalized tab/PDF text is fingerprinted; unchanged content reuses the extraction. A new week or parser version also requires re-extraction. Saved data survives restarts and is shared across instances.
-- Manual refresh is owner-only. The owner signs in at /owner; agents use Bearer authentication for POST refresh. Both paths retain last-good data and share a per-pool database lock and 60-second cooldown with the worker.
+- Manual refresh is owner-only. Agents use Bearer authentication for POST refresh. Source checks retain last-good data and share a per-pool database lock and 60-second cooldown with the worker.
 - For an explicitly requested immediate source check, POST /api/pools/refresh with Authorization: Bearer <token> and Content-Type: application/json. The token must match POOLS_API_SECRET; never put it in a URL. Send {"poolId":"bazen-spansko"} for one facility or {} for all. Unchanged content still skips AI. Allow up to 180 seconds when extraction is necessary.
 - Do not create recurring polling or background updates unless the user explicitly requests them.
 
@@ -26,7 +26,7 @@ Response interpretation:
 - Remote MCP: POST /mcp using Streamable HTTP. Anonymous tools: list_pools, get_schedules, get_openapi. Catalog resource: pools://catalog.
 - A valid owner Bearer token additionally enables get_job_runs and check_sources. Never send owner keys in URLs.
 - Interactive Swagger UI: /docs.
-- Owner dashboard: /owner/jobs. JSON report: GET /api/jobs with an owner session or Bearer token.
+- JSON metrics report: GET /api/jobs with an owner session or Bearer token.
 - Cache hits mean unchanged relevant source content; AI requests include SDK retries and failed requests. Metrics begin at trackingSince; earlier request counts are unknown.
 
 ## Documentation and discovery
