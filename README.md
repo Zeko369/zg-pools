@@ -99,6 +99,8 @@ FROM pool_extractions ORDER BY extracted_at DESC;
 
 ## Deployment
 
+The existing production deployment uses a managed Postgres database and separate Coolify web/worker applications; see [`deploy/COOLIFY.md`](deploy/COOLIFY.md) for resource identities and rollout details.
+
 `compose.yaml` provides persistent Postgres 17 plus separate web and worker containers. For the complete stack, set the variables from `.env.example` in a protected env file and run:
 
 ```sh
