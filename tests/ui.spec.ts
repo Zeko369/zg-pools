@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { POOLS } from "../src/lib/pools";
 import { getWeekDates, type DayInfo } from "../src/lib/dates";
 import type { WeekSchedule } from "../src/lib/ai";
+import { createOwnerSession } from "../src/lib/owner-session";
 const runtimeErrors: string[] = [];
 test.beforeEach(({ page }) => {
   runtimeErrors.length = 0;
@@ -763,4 +764,104 @@ test("mobile week starts around today, controls sit above views, and storage err
     "bazen-jelkovec",
   );
   await page.screenshot({ path: "/tmp/zg-pools-mobile-agenda.png" });
+});
+
+test("Swagger loads the current spec and executes a catalog request", async ({
+  page,
+}) => {
+  await page.goto("/docs");
+  await expect(page).toHaveTitle("API & MCP · Bazeni Zagreb");
+  await expect(
+    page.getByRole("heading", { name: "API & MCP", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".swagger-ui .info .title")).toContainText(
+    "Bazeni Zagreb",
+  );
+  const catalog = page
+    .locator(".opblock-get")
+    .filter({ hasText: "/pools/catalog" });
+  await catalog.locator(".opblock-summary-control").click();
+  await catalog.getByRole("button", { name: "Try it out" }).click();
+  const request = page.waitForResponse(
+    (r) =>
+      r.url().endsWith("/api/pools/catalog") && r.request().method() === "GET",
+  );
+  await catalog.getByRole("button", { name: "Execute", exact: true }).click();
+  expect((await request).status()).toBe(200);
+  await expect(catalog.locator(".live-responses-table")).toContainText(
+    "bazenski-kompleks-svetice",
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    page.getByRole("heading", { name: "API & MCP", exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth + 1,
+    ),
+  ).toBe(true);
+});
+
+test("job metrics reject guests and preserve the sign-in destination", async ({
+  page,
+  request,
+}) => {
+  expect((await request.get("/api/jobs")).status()).toBe(401);
+  expect(
+    (
+      await request.get("/api/jobs", {
+        headers: { Authorization: "Bearer invalid" },
+      })
+    ).status(),
+  ).toBe(401);
+  await page.goto("/owner/jobs");
+  await expect(page).toHaveURL(/\/owner\?next=\/owner\/jobs/);
+  await expect(page.locator('input[name="next"]')).toHaveValue("/owner/jobs");
+});
+
+test("owner sees job counts, history, chart and responsive keyboard controls", async ({
+  page,
+  context,
+  request,
+}) => {
+  test.skip(
+    !process.env.UI_TEST_DATABASE_URL,
+    "Set an isolated UI_TEST_DATABASE_URL to verify stored metrics",
+  );
+  await context.addCookies([
+    {
+      name: "pools-owner",
+      value: createOwnerSession("playwright-only-owner-key"),
+      url: "http://127.0.0.1:3017",
+    },
+  ]);
+  await page.goto("/owner/jobs");
+  await expect(page).toHaveTitle("Job runs · Bazeni Zagreb");
+  await expect(
+    page.getByRole("heading", { name: "Job runs", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Recent source checks", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("img", { name: /cache hits/ })).toBeVisible();
+  expect(
+    (
+      await request.get("/api/jobs", {
+        headers: { Authorization: "Bearer playwright-only-owner-key" },
+      })
+    ).status(),
+  ).toBe(200);
+  const refresh = page.getByRole("button", { name: "Refresh view" });
+  await refresh.focus();
+  await expect(refresh).toBeFocused();
+  await refresh.press("Enter");
+  await expect(
+    page.getByRole("heading", { name: "Job runs", exact: true }),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth + 1,
+    ),
+  ).toBe(true);
 });

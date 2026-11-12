@@ -36,3 +36,14 @@ validation failures while keeping the last good schedule.
 For rollback, retain the previous web/worker images and the database volume. A
 web rollback to the previous implementation temporarily restores its old
 request-driven cache; the database remains recoverable for the next release.
+
+## MCP, documentation and observability
+
+`/mcp` and `/docs` are public. The job dashboard `/owner/jobs`, JSON report
+`/api/jobs`, and MCP owner tools require the existing owner key/session. Configure
+`POOLS_API_SECRET` only on web as a runtime-only secret; the worker does not need it.
+
+Roll out the worker first for migration 002 and HTTP-attempt tracking, then deploy
+web. No schedule-cache invalidation or initial paid extraction is required. The
+tracking boundary is visible in `pool_metrics_metadata.tracking_since`. Keep
+Swagger assets in Next.js output tracing when changing deployment packaging.

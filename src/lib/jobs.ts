@@ -31,20 +31,23 @@ export async function startJobs(handler = refreshPool) {
     };
     await boss.createQueue(CHECK_ALL_QUEUE, queueOptions);
     await boss.createQueue(CHECK_POOL_QUEUE, queueOptions);
-    const enqueueAll = async () => {
+    const enqueueAll = async (jobs: { data: { trigger?: string } }[]) => {
       for (const pool of POOLS)
         await boss.send(
           CHECK_POOL_QUEUE,
-          { poolId: pool.id },
+          { poolId: pool.id, trigger: jobs[0]?.data.trigger ?? "scheduled" },
           { singletonKey: pool.id },
         );
     };
-    await boss.work(CHECK_ALL_QUEUE, enqueueAll);
-    await boss.work<{ poolId: string }>(
+    await boss.work<{ trigger?: string }>(CHECK_ALL_QUEUE, enqueueAll);
+    await boss.work<{ poolId: string; trigger?: string }>(
       CHECK_POOL_QUEUE,
       { localConcurrency: 2 },
       async ([job]) => {
-        const result = await handler(job.data.poolId);
+        const result = await handler(job.data.poolId, undefined, undefined, {
+          jobId: job.id,
+          trigger: job.data.trigger ?? "scheduled",
+        });
         console.log(JSON.stringify({ poolId: job.data.poolId, ...result }));
         return result;
       },
@@ -53,7 +56,7 @@ export async function startJobs(handler = refreshPool) {
       await boss.schedule(
         CHECK_ALL_QUEUE,
         schedule.cron,
-        {},
+        { trigger: "scheduled" },
         {
           key: schedule.key,
           tz: TIME_ZONE,
@@ -62,7 +65,11 @@ export async function startJobs(handler = refreshPool) {
         },
       );
     // Warm on boot; fingerprints and the shared cooldown prevent paid duplicate work.
-    await boss.send(CHECK_ALL_QUEUE, {}, { singletonKey: "all" });
+    await boss.send(
+      CHECK_ALL_QUEUE,
+      { trigger: "startup" },
+      { singletonKey: "all" },
+    );
     return boss;
   } catch (error) {
     await boss.stop();

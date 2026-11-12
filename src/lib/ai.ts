@@ -1,5 +1,7 @@
 import { generateObject } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { createOpenAI } from "@ai-sdk/openai";
+import { trackedModelFetch } from "./model-metrics";
+import type { PoolClient } from "pg";
 import { z } from "zod";
 import {
   getWeekDates,
@@ -178,6 +180,8 @@ export async function parsePoolAvailability(
   poolName: string,
   rawContent: string,
   now = new Date(),
+  runId?: string,
+  metricsDb?: Pick<PoolClient, "query">,
 ): Promise<{
   availability: PoolAvailability;
   usage: {
@@ -193,6 +197,9 @@ export async function parsePoolAvailability(
   const requested = [...weeks.currentWeek.days, ...weeks.nextWeek.days].map(
     (d) => ({ ...d, holiday: holidayForDate(d.date) }),
   );
+  const openai = createOpenAI({
+    fetch: trackedModelFetch(PARSER_MODEL, runId, globalThis.fetch, metricsDb),
+  });
   const { object, usage } = await generateObject({
     model: openai.responses(PARSER_MODEL),
     schema: ExtractionSchema,

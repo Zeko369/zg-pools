@@ -10,12 +10,13 @@
     "db:migrate": "bun scripts/migrate.ts",
     "db:up": "docker compose --env-file .env.local up -d --wait postgres",
     "type": "tsgo --noEmit --incremental false",
-    "test": "bun test tests/core.test.ts",
+    "test": "bun test tests/core.test.ts tests/mcp.test.ts",
     "test:db": "bun test tests/database.test.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.88",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-label": "^2.1.17",
     "@radix-ui/react-separator": "^1.2.0",
@@ -32,6 +33,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "server-only": "^0.0.1",
+    "swagger-ui-dist": "^5.34.1",
     "tailwind-merge": "^3.4.0",
     "zod": "^4.2.1"
   },

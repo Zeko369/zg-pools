@@ -175,12 +175,74 @@ export function GET() {
     openapi: "3.1.0",
     info: {
       title: "Bazeni Zagreb — agent API",
-      version: "2.2.0",
+      version: "2.3.0",
       description:
         "Citizen swimming schedules extracted with GPT-6 Luna and persisted in Postgres. Public GET requests only read saved schedules and never invoke AI. A pg-boss worker checks relevant facility tab/PDF content every 15 minutes from 05:00 through 21:00 Europe/Zagreb. Unchanged source text reuses the extraction; changed text, a new week or parser version triggers AI. Owner checks share a cross-instance lock and 60-second cooldown. No previous-week data is returned for a new week.",
     },
     servers: [{ url: "/api" }],
     paths: {
+      "/jobs": {
+        get: {
+          operationId: "getJobRuns",
+          summary:
+            "Owner-only job runs, source-cache hits and actual model request attempts",
+          description:
+            "Read-only metrics. AI request counts include failed requests and SDK retries, beginning at trackingSince; earlier requests cannot be reconstructed. The browser owner session is also accepted. Interactive dashboard: /owner/jobs.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            "200": {
+              description:
+                "Job report: 24-hour summaries, 7-day daily counts, recent source checks, pool freshness and pg-boss queue history",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: [
+                      "generatedAt",
+                      "trackingSince",
+                      "summary",
+                      "runs",
+                    ],
+                    properties: {
+                      generatedAt: { type: "string", format: "date-time" },
+                      trackingSince: {
+                        type: ["string", "null"],
+                        format: "date-time",
+                      },
+                      summary: {
+                        type: "object",
+                        properties: {
+                          checks: { type: "integer" },
+                          cache_hits: { type: "integer" },
+                          extractions: { type: "integer" },
+                          failures: { type: "integer" },
+                          skipped: { type: "integer" },
+                          ai: {
+                            type: "object",
+                            description:
+                              "Request attempts, HTTP failures, unknown usage and known token totals",
+                          },
+                        },
+                      },
+                      runs: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          description:
+                            "Source-check outcome, timestamps, trigger, pg-boss job ID and associated AI requests",
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            "401": {
+              description: "Owner cookie or valid Bearer token required",
+            },
+          },
+        },
+      },
       "/pools/catalog": {
         get: {
           operationId: "listPoolSources",

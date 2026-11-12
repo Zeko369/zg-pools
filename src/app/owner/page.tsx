@@ -24,9 +24,9 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function OwnerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string }>;
 }) {
-  const [owner, { error }, language] = await Promise.all([
+  const [owner, { error, next }, language] = await Promise.all([
     hasOwnerSession(),
     searchParams,
     requestLanguage(),
@@ -45,6 +45,14 @@ export default async function OwnerPage({
       {owner ? (
         <>
           <p>{t.ownerEnabled}</p>
+          <p>
+            <Link href="/owner/jobs">
+              {language === "hr"
+                ? "Poslovi i AI potrošnja"
+                : "Job runs & AI usage"}{" "}
+              →
+            </Link>
+          </p>
           <form action={signOutOwner}>
             <Button type="submit">{t.signOut}</Button>
           </form>
@@ -53,6 +61,9 @@ export default async function OwnerPage({
         <>
           <p>{t.ownerIntro}</p>
           <form action={signInOwner}>
+            {next === "/owner/jobs" ? (
+              <input type="hidden" name="next" value="/owner/jobs" />
+            ) : null}
             <FieldGroup>
               <Field data-invalid={error === "invalid" || undefined}>
                 <FieldLabel htmlFor="owner-key">{t.ownerKey}</FieldLabel>

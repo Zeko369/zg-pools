@@ -145,6 +145,28 @@ Responses use `{ timezone, generatedAt, partial, results }`. Each result is `{ p
 
 For an agent: discover pools with catalog, read schedules on demand, inspect `error`/`stale`, and call the authenticated refresh endpoint only when the user requests an immediate check. Background checks are already handled by pg-boss; agents do not need their own polling schedule.
 
+## Swagger UI and MCP
+
+Interactive API explorer: **[`/docs`](https://zg-pools.zeko.run/docs)**. It loads the live `/api/openapi` specification and supports trying requests against this server. Swagger's official prebuilt assets are served locally, with no external validator or CDN. Authorization is not persisted in browser storage.
+
+Remote MCP endpoint: **`https://zg-pools.zeko.run/mcp`**, using stateless Streamable HTTP (POST, JSON responses). Connect with an MCP client that supports remote HTTP servers:
+
+```json
+{"mcpServers":{"zg-pools":{"url":"https://zg-pools.zeko.run/mcp"}}}
+```
+
+Public tools are `list_pools`, `get_schedules` (optional `poolId`, `week`, `date`, `compact`) and `get_openapi`; the catalog is also a `pools://catalog` resource. These tools only read saved data. Sending a valid `Authorization: Bearer ...` header matching `POOLS_API_SECRET` enables `get_job_runs` and `check_sources`. Owner credentials are checked on every request, and anonymous clients cannot discover or invoke owner tools. Source checks still obey content fingerprints and the shared cooldown.
+
+## Job runs and cache/AI metrics
+
+Open **[`/owner/jobs`](https://zg-pools.zeko.run/owner/jobs)** and sign in with the owner key. The read-only dashboard shows 24-hour counters, a seven-day cache/AI chart, individual source checks, pool freshness, scheduled cron entries and recent pg-boss jobs. `GET /api/jobs` returns the same report with an owner cookie or Bearer token. A separate pg-boss dashboard service is not required for these metrics. For process/build logs, use the existing `zg-pools-worker` application in Coolify.
+
+A **cache hit** is a source check whose relevant normalized content, week and parser version match the saved extraction. **Cooldown** and **busy** skips are counted separately. Visitor/API reads only read Postgres and do not count as source checks.
+
+**AI requests** count actual SDK HTTP attempts, including automatic retries, HTTP/network failures, and responses whose output later fails local validation. Token usage is captured from the model response before schedule validation. Missing usage is reported explicitly; requests are not necessarily billable simply because an attempt was made. Provider cached-input tokens are different from source-cache hits; reasoning tokens are already included in output tokens.
+
+Tracking begins at the `trackingSince` timestamp created by migration 002. Earlier request counts, including failures and retries, cannot be reconstructed. The native queue history still shows older pg-boss jobs for their seven-day retention period. `pool_refresh_runs` and `pool_ai_calls` retain application metrics independently of queue cleanup; raw prompts, credentials and model response bodies are never saved in these metrics tables.
+
 ## Verification
 
 ```sh

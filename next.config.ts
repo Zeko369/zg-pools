@@ -10,6 +10,8 @@ const nextConfig: NextConfig = {
       "./node_modules/pdfjs-dist/standard_fonts/**/*",
       "./node_modules/@napi-rs/canvas/**/*",
       "./node_modules/@napi-rs/canvas-*/**/*",
+      "./node_modules/swagger-ui-dist/swagger-ui-bundle.js",
+      "./node_modules/swagger-ui-dist/swagger-ui.css",
     ],
   },
 };
