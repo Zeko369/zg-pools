@@ -415,7 +415,7 @@ test("only the signed-in owner sees refresh; invalid keys fail and logout remove
   expect(cookie.httpOnly).toBe(true);
   expect(cookie.sameSite).toBe("Strict");
   expect(cookie.value).not.toContain("playwright-only-owner-key");
-  await page.getByRole("link", { name: "Vlasnički pristup" }).click();
+  await page.goto("/owner");
   await expect(
     page.getByText("Ručno osvježavanje je omogućeno u ovom pregledniku."),
   ).toBeVisible();

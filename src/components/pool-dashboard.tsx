@@ -664,14 +664,6 @@ export function PoolDashboard({
           </span>
           <span>
             {t.zagrebTime} ·{" "}
-            {canRefresh && (
-              <>
-                <Link href="/owner" prefetch={false}>
-                  {t.ownerAccess}
-                </Link>{" "}
-                ·{" "}
-              </>
-            )}
             <a href="/docs" target="_blank" rel="noreferrer">
               {t.agentApi} <ExternalLink size={11} />
             </a>
