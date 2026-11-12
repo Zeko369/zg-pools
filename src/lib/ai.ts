@@ -178,14 +178,22 @@ export async function parsePoolAvailability(
   poolName: string,
   rawContent: string,
   now = new Date(),
-): Promise<PoolAvailability> {
+): Promise<{
+  availability: PoolAvailability;
+  usage: {
+    inputTokens: number | null;
+    outputTokens: number | null;
+    reasoningTokens: number | null;
+    cachedInputTokens: number | null;
+  };
+}> {
   if (!process.env.OPENAI_API_KEY)
     throw new Error("OPENAI_API_KEY is not configured");
   const weeks = getWeekDates(now);
   const requested = [...weeks.currentWeek.days, ...weeks.nextWeek.days].map(
     (d) => ({ ...d, holiday: holidayForDate(d.date) }),
   );
-  const { object } = await generateObject({
+  const { object, usage } = await generateObject({
     model: openai.responses(PARSER_MODEL),
     schema: ExtractionSchema,
     providerOptions: {
@@ -217,5 +225,13 @@ Rules:
 
 <official-source>\n${rawContent}\n</official-source>`,
   });
-  return availabilityFromExtraction(poolName, object, now);
+  return {
+    availability: availabilityFromExtraction(poolName, object, now),
+    usage: {
+      inputTokens: usage.inputTokens ?? null,
+      outputTokens: usage.outputTokens ?? null,
+      reasoningTokens: usage.reasoningTokens ?? null,
+      cachedInputTokens: usage.cachedInputTokens ?? null,
+    },
+  };
 }

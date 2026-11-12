@@ -1,21 +1,21 @@
 # Bazeni Zagreb
 
-> Public swimming schedules for Zagreb pools, extracted from official Sportski objekti pages and linked timetables. Use the JSON API for schedule questions and on-demand updates.
+> Public swimming schedules for Zagreb pools, extracted from official Sportski objekti pages and linked timetables. Use the JSON API for saved schedules and authenticated source checks.
 
 All links below are relative to this site's origin unless an absolute URL is given. All times, today's date, holidays and Monday-to-Sunday week boundaries use Europe/Zagreb. Query dates use YYYY-MM-DD; schedule dates use DD.MM.YYYY. Only the current and next week are available.
 
 Agent workflow:
 - Start with the OpenAPI schema and pool catalog. These and this file do not scrape sources or invoke AI.
-- Fetch schedules only when answering a user request. GET schedule requests can trigger extraction on a cache miss. Prefer the single-pool endpoint when only one facility is needed.
-- Successful schedules are cached for one hour per server process. Concurrent requests share extraction work. Cache expiry does nothing until another request arrives; there is no scheduled refresh or polling.
-- The website's manual refresh button is owner-only. Guests can read schedules; expired or missing caches still refresh on demand. The owner signs in at /owner; agents continue to use Bearer authentication for POST refresh.
-- For an explicitly requested fresh check, POST /api/pools/refresh with Authorization: Bearer <token> and Content-Type: application/json. The token must match the server's configured POOLS_API_SECRET; never put it in a URL. Send {"poolId":"bazen-spansko"} for one facility or {} for all. Forced refreshes and failed retries have a 60-second cooldown. Allow up to 180 seconds for a cold request.
+- GET schedule requests only read Postgres snapshots and never scrape or invoke AI. Prefer the single-pool endpoint when only one facility is needed. Missing snapshots return per-pool errors until the background worker has loaded them.
+- pg-boss checks each source every 15 minutes from 05:00 through 21:00 Europe/Zagreb. Relevant normalized tab/PDF text is fingerprinted; unchanged content reuses the extraction. A new week or parser version also requires re-extraction. Saved data survives restarts and is shared across instances.
+- Manual refresh is owner-only. The owner signs in at /owner; agents use Bearer authentication for POST refresh. Both paths retain last-good data and share a per-pool database lock and 60-second cooldown with the worker.
+- For an explicitly requested immediate source check, POST /api/pools/refresh with Authorization: Bearer <token> and Content-Type: application/json. The token must match POOLS_API_SECRET; never put it in a URL. Send {"poolId":"bazen-spansko"} for one facility or {} for all. Unchanged content still skips AI. Allow up to 180 seconds when extraction is necessary.
 - Do not create recurring polling or background updates unless the user explicitly requests them.
 
 Response interpretation:
 - Schedule responses contain timezone, generatedAt, partial and results. Each result contains pool, data and error. A successful data object includes availability, fetchedAt, stale and model.
 - Inspect each result's error and stale fields, even on HTTP 200. Partial results may contain failed facilities. HTTP 503 means all requested facilities failed; 400 means invalid parameters, 404 an unknown pool, and 401 invalid or unconfigured refresh credentials.
-- availability contains currentWeek/nextWeek, or day for date/compact requests, plus alerts and notices. Read fetchedAt for freshness; generatedAt is the response time, not the source-check time.
+- availability contains currentWeek/nextWeek, or day for date/compact requests, plus alerts and notices. fetchedAt is the last successful source check, including checks that reused an extraction; generatedAt is only the response time.
 - The website supports English and Croatian, defaults from Accept-Language, and remembers an explicit language choice. API data stays language-independent: reason, lanes, alerts and notices remain Croatian, with additive reasonEn, lanesEn, alertsEn and noticesEn translations. English arrays follow the same order as their Croatian counterparts. Prefer these English fields when answering in English; IDs, date formats, day names and status values are unchanged.
 - A day's status is open, closed or unknown. open means published public-swimming slots exist for that date, not that the facility is open right now. unknown must not be reported as closed or open. Check slot times and dated alerts before recommending a visit.
 - Pool types are olympic (main/large pool, regardless of length), small (small/warm-up pool), children (children-only pool) and diving (diving pool). Slots contain HH:MM - HH:MM hours and optional lane restrictions.

@@ -9,7 +9,8 @@ import {
   PARSER_MODEL,
   type Extraction,
 } from "../src/lib/ai";
-import { RequestCache } from "../src/lib/request-cache";
+import { sourceCheckIsStale } from "../src/lib/cache-policy";
+import { sourceHash } from "../src/lib/refresh";
 import {
   detectLanguage,
   holidayName,
@@ -113,6 +114,40 @@ describe("sources and dates", () => {
     expect(result.text).toContain("13:30 - 18:00");
     expect(result.text).toContain("sezona završava 13.rujna 2026.");
     expect(result.text).not.toContain("Klizalište");
+  });
+  test("fingerprints ignore chrome, other tabs, price widgets and formatting, but track notices and hours", () => {
+    const page = (
+      chrome: string,
+      other: string,
+      widget: string,
+      hours = "06:30 - 20:00",
+      notice = "Otvoreno",
+    ) =>
+      `<header>${chrome}</header><button class="nav-link" data-bs-target="#objekt-tab2-pane">Obavijesti</button>
+      <div id="objekt-content"><div class="unrelated">${chrome}</div>
+      <div class="tab-pane" id="objekt-tab1-pane"><p>${hours}</p><div class="cjenik-wrapper">${widget}</div></div>
+      <div class="tab-pane" id="objekt-tab2-pane"><p>${notice}</p></div>
+      <div class="tab-pane" id="wellness">${other}</div></div><footer>${chrome}</footer>`;
+    const fingerprint = (html: string) =>
+      sourceHash(
+        extractPageContent(html, "https://www.sportskiobjekti.hr/bazen/1?tab=1")
+          .text,
+      );
+    const original = fingerprint(page("a", "Wellness 08:00", "Price 1"));
+    expect(fingerprint(page("b", "Wellness 10:00", "Price 2"))).toBe(original);
+    expect(
+      fingerprint(
+        page("b", "x", "x")
+          .replaceAll("<p>", "<p>\n  ")
+          .replaceAll("</p>", "\n </p>"),
+      ),
+    ).toBe(original);
+    expect(fingerprint(page("a", "x", "x", "07:00 - 20:00"))).not.toBe(
+      original,
+    );
+    expect(
+      fingerprint(page("a", "x", "x", undefined, "Zatvoreno 18.11.2026.")),
+    ).not.toBe(original);
   });
 });
 
@@ -279,78 +314,39 @@ describe("model output validation", () => {
     ).toHaveLength(3);
   });
 });
-describe("request-only cache", () => {
-  test("expiry does no work; next request refreshes and concurrent calls coalesce", async () => {
-    let now = 0,
-      calls = 0;
-    const cache = new RequestCache<number>(1000, 100, () => now);
-    const load = async () => {
-      calls++;
-      await Promise.resolve();
-      return calls;
-    };
-    expect(calls).toBe(0);
-    const values = await Promise.all([
-      cache.get("a", "week1", load),
-      cache.get("a", "week1", load),
-    ]);
-    expect(calls).toBe(1);
-    expect(values.map((v) => v.value)).toEqual([1, 1]);
-    now = 2000;
-    expect(calls).toBe(1);
-    expect((await cache.get("a", "week1", load)).value).toBe(2);
+describe("background cache freshness", () => {
+  test("flags missed daytime checks but allows the intentional overnight pause", () => {
+    expect(
+      sourceCheckIsStale(
+        new Date("2026-11-12T11:00:00Z"),
+        new Date("2026-11-12T11:30:00Z"),
+      ),
+    ).toBe(false);
+    expect(
+      sourceCheckIsStale(
+        new Date("2026-11-12T11:00:00Z"),
+        new Date("2026-11-12T12:00:00Z"),
+      ),
+    ).toBe(true);
+    expect(
+      sourceCheckIsStale(
+        new Date("2026-11-12T20:00:00Z"),
+        new Date("2026-11-13T03:59:00Z"),
+      ),
+    ).toBe(false);
+    expect(
+      sourceCheckIsStale(
+        new Date("2026-11-12T19:00:00Z"),
+        new Date("2026-11-13T03:59:00Z"),
+      ),
+    ).toBe(true);
+    expect(
+      sourceCheckIsStale(
+        new Date("2026-11-12T20:00:00Z"),
+        new Date("2026-11-13T04:30:00Z"),
+      ),
+    ).toBe(true);
   });
-  test("force refresh has cooldown, retains original fetched data", async () => {
-    let now = 0,
-      calls = 0;
-    const cache = new RequestCache<number>(1000, 100, () => now);
-    const load = async () => ++calls;
-    await cache.get("a", "w1", load);
-    await cache.get("a", "w1", load, true);
-    expect(calls).toBe(1);
-    now = 101;
-    expect((await cache.get("a", "w1", load, true)).value).toBe(2);
-  });
-  test("failure backs off, preserves stale same-week data, never serves wrong week", async () => {
-    let now = 0,
-      calls = 0;
-    const cache = new RequestCache<number>(1000, 100, () => now);
-    await cache.get("a", "w1", async () => 1);
-    now = 1001;
-    const fail = async () => {
-      calls++;
-      throw new Error("upstream unavailable");
-    };
-    expect(await cache.get("a", "w1", fail)).toEqual({ value: 1, stale: true });
-    expect(await cache.get("a", "w1", fail, true)).toEqual({
-      value: 1,
-      stale: true,
-    });
-    expect(calls).toBe(1);
-    await expect(cache.get("a", "w2", fail)).rejects.toThrow(
-      "upstream unavailable",
-    );
-    now += 101;
-    await expect(cache.get("a", "w2", fail)).rejects.toThrow();
-    expect(calls).toBe(2);
-  });
-});
-
-test("failed forced refresh remains marked stale on subsequent ordinary reads", async () => {
-  let now = 0;
-  const cache = new RequestCache<number>(1000, 100, () => now);
-  await cache.get("pool", "week", async () => 1);
-  now = 101;
-  await cache.get(
-    "pool",
-    "week",
-    async () => {
-      throw new Error("Source unavailable");
-    },
-    true,
-  );
-  const result = await cache.get("pool", "week", async () => 2);
-  expect(result).toEqual({ value: 1, stale: true });
 });
 
 // Verify the actual SDK conversion, including objects inside nullable anyOf branches.

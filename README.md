@@ -10,7 +10,7 @@ Find public swimming times across Zagreb in one place. Bazeni Zagreb brings toge
 - **Daily agenda:** the default view. Pick a date and see each pool's public swimming slots. Star favorites to pin them first; favorites are saved in this browser.
 - **Schedule details:** see holiday changes, closure notices, pool types, and lane restrictions when published by the official source.
 
-The app reads official facility pages and linked timetable PDFs, then uses **GPT-6 Luna** to turn them into structured schedules. Data is fetched on demand; the owner can also request a manual refresh.
+The app reads official facility pages and linked timetable PDFs, then uses **GPT-6 Luna** to turn them into structured schedules. A Postgres-backed pg-boss worker checks the official sources every 15 minutes between 05:00 and 21:00 Europe/Zagreb. The website reads saved schedules immediately; unchanged relevant content does not invoke the model.
 
 All times use **Europe/Zagreb**, including daylight saving time. This is an unofficial schedule viewer; check the official source before travelling. An `open` day means published swimming slots exist for that date, so check the slot times before visiting. `closed` and `unknown` are distinct.
 
@@ -46,7 +46,11 @@ Built with Next.js 16, React 19, TypeScript, Tailwind CSS, and the Vercel AI SDK
 ```sh
 bun install --frozen-lockfile
 cp .env.example .env.local
-# Set OPENAI_API_KEY in .env.local to load schedules.
+# Set OPENAI_API_KEY, a URL-safe POSTGRES_PASSWORD, and the matching DATABASE_URL.
+bun run db:up
+bun run db:migrate
+bun run worker # keep running in its own terminal
+# In another terminal:
 bun dev
 ```
 
@@ -60,15 +64,50 @@ Set a long random `POOLS_API_SECRET` on the server, then open [`/owner`](https:/
 
 Guests have no manual refresh button. The server action checks owner access on every refresh, so calling it directly cannot bypass the restriction. The session uses a signed, HttpOnly, SameSite=Strict cookie (Secure in production); the key is never stored in the cookie or browser storage. Rotating `POOLS_API_SECRET` invalidates existing sessions and API bearer tokens. Without it, manual refresh is disabled.
 
-**Default cache: one hour. Manual refresh cooldown: 60 seconds per pool.** These limits are per server process and shared by the owner button and authenticated API. Requests during the cooldown reuse cached data rather than starting another scrape. Public schedule reads can still refresh an expired or missing cache.
+**Manual refresh cooldown: 60 seconds per pool, shared across all web and worker processes through Postgres.** An owner refresh checks the source immediately; it still skips AI if the relevant content and week are unchanged.
 
-## When extraction runs
+## Background refresh and durable cache
 
-**Nothing runs on a timer.** Builds, server startup, route prefetches and hidden/unopened browser pages do not trigger extraction. A visible page requests each pool once on mount, displaying each result as it arrives. Failed pools can be retried explicitly; retries use the same server cooldown. GET schedule API calls also count as explicit requests. No browser polling, cron, scheduled revalidation or stale-while-revalidate work is used.
+Postgres stores the last successful bilingual schedule, its source fingerprint, extraction time, last successful source-check time, last attempt and failure state. Public GET requests only read these saved snapshots; they never scrape or invoke AI, including when a snapshot is missing. Start the worker to populate an empty database. Cache expiry, builds, server startup and browser prefetch do not run model calls in the web process.
 
-Successful data is cached for one hour **per server process**. Expiry itself does nothing; the next request refreshes it. Concurrent requests share one in-flight task per pool. An authenticated owner-button or API refresh requests a fresh scrape, subject to a 60-second cooldown. Failed requests also have a 60-second retry cooldown. Refresh failure retains the last same-week result with `stale: true`; data from an earlier week is never served for the new week. A failed facility does not hide successful facilities.
+Run one or more persistent workers with `bun run worker`. The worker applies versioned migrations, initializes pg-boss in its own `pgboss` schema, registers the schedules and queues one initial source check on boot. pg-boss stores its jobs and schedules in Postgres; the scheduler itself needs a running worker process. No `pg_cron` extension or system crontab is needed.
 
-The cache is memory-only, clears on process restart and is not shared between replicas/serverless instances. For a busy multi-instance deployment, move the request cache and locks to a shared durable store. There is no cross-instance cost cap in this version. Public GET requests may incur model costs on cache misses.
+The schedule uses `*/15 5-20 * * *` plus `0 21 * * *`, both in **Europe/Zagreb**, so it checks every 15 minutes from 05:00 through exactly 21:00, including daylight saving changes. A missed schedule catches up once after an outage, rather than replaying every missed interval. Boot and authenticated owner checks can also run outside the scheduled hours.
+
+Each run fans out one job per facility. Queue singleton keys and per-pool Postgres advisory locks prevent concurrent extraction across workers and manual requests. Jobs retry twice with backoff; failed attempts have a shared 60-second cooldown. The application uses a five-connection pool and pg-boss a separate three-connection pool per process. Use a direct Postgres connection (or session pooling) because the per-pool locks are session-scoped.
+
+A worker downloads the official HTML, selects only the relevant facility tab bodies and linked citizen-hours PDFs, then normalizes their text and hashes it with SHA-256. Website headers, footers, other tabs, event-calendar/price widgets, HTML formatting, link query strings and PDF metadata do not enter that fingerprint. A PDF is still checked when the HTML is unchanged, so replacing a PDF at the same URL is detected. The model receives only that facility's relevant normalized text. An unrelated facility never causes the others to be reinterpreted.
+
+Unchanged text reuses the saved extraction, including closed pools. AI runs only on the first check, changed relevant content, a new Zagreb week, or an explicit parser-version bump. Weekly re-extraction is required because the current parser produces 14 concrete dates, not perpetual timetable rules; closures are not hard-coded indefinitely. Changing the model or parsing rules requires bumping `PARSER_VERSION` in `src/lib/refresh.ts`.
+
+Refreshing never removes the last successful snapshot. Reads remain immediate while work runs; a failed check marks retained same-week data `stale: true`. A stopped daytime worker also marks data stale after 45 minutes, allowing the intentional overnight pause. Earlier-week snapshots are never returned as the new week's schedule. `fetchedAt` now means the last successful source check, even when no AI was needed.
+
+Inspect changes and usage with SQL:
+
+```sql
+-- Current source-check and extraction status.
+SELECT pool_id, source_hash, checked_at, extracted_at, last_error FROM pool_state;
+
+-- Relevant source bodies, saved only when a new fingerprint is seen.
+SELECT pool_id, source_hash, body, observed_at
+FROM pool_source_versions ORDER BY observed_at DESC;
+
+-- Every successful extraction, its output and reported token usage.
+SELECT pool_id, source_hash, scope, usage, extracted_at
+FROM pool_extractions ORDER BY extracted_at DESC;
+```
+
+## Deployment
+
+The existing production deployment uses a managed Postgres database and separate Coolify web/worker applications; see [`deploy/COOLIFY.md`](deploy/COOLIFY.md) for resource identities and rollout details.
+
+`compose.yaml` provides persistent Postgres 17 plus separate web and worker containers. For the complete stack, set the variables from `.env.example` in a protected env file and run:
+
+```sh
+docker compose --env-file .env.production --profile app up -d --build
+```
+
+The database and web ports bind to loopback; put your existing reverse proxy in front of the web service. The worker and web services share the internal Postgres URL. An existing deployment can instead provision Postgres separately, set `DATABASE_URL` on both services and use the Dockerfile's `runner` target for web and `worker` target for jobs. Keep the worker running and give the database user permission to create the application tables and pg-boss schema. `.env` files are excluded from Docker builds. Back up the `postgres-data` volume using your normal Postgres backup process; do not remove that volume during redeployment.
 
 ## Source handling
 
@@ -89,7 +128,7 @@ Machine-readable documentation: **[`GET /api/openapi`](https://zg-pools.zeko.run
 | `GET /api/pools?compact=true`    | Today only                                           |
 | `GET /api/pools/today`           | Today in Zagreb                                      |
 | `GET /api/pools/bazen-spansko`   | One pool; supports the same query filters            |
-| `POST /api/pools/refresh`        | Force an on-demand update; Bearer token required     |
+| `POST /api/pools/refresh`        | Check sources now; reuse unchanged extractions; Bearer token required     |
 
 Set a long random `POOLS_API_SECRET` on the server to enable agent refresh. Agents send it via `Authorization: Bearer ...`. Keep it out of browser code and URLs. The website uses an authenticated, same-origin Next server action for its owner-only refresh button. Both paths use the same per-pool cooldown.
 
@@ -99,23 +138,25 @@ curl -X POST 'https://zg-pools.zeko.run/api/pools/refresh' \
   -H "Authorization: Bearer $POOLS_API_SECRET" \
   -H 'Content-Type: application/json' \
   -d '{"poolId":"bazen-jelkovec"}'
-# Send {} to refresh all pools. Allow up to 150 seconds for a cold extraction.
+# Send {} to refresh all pools. Allow up to 180 seconds for a changed-source extraction.
 ```
 
 Responses use `{ timezone, generatedAt, partial, results }`. Each result is `{ pool, data, error }`; `data` contains `availability`, `fetchedAt`, `stale` and `model`. Availability has `currentWeek`/`nextWeek` (or `day` for date/compact reads), alerts and notices. Slots contain normalized `HH:MM - HH:MM` hours and optional lane restrictions. Existing `reason`, `lanes`, `alerts`, and `notices` text stays Croatian; additive `reasonEn`, `lanesEn`, `alertsEn`, and `noticesEn` fields provide English translations, with arrays in the same order. API dates, day names, IDs, and status values are independent of the website language. Types are `olympic` (main/large pool, regardless of length), `small` (small/warm-up) `children` (explicitly children-only) and `diving` (bazen za skokove). Partial failures return HTTP 200 with per-pool errors; all failures return 503. Bad parameters return 400, unknown IDs 404, invalid refresh credentials 401. Responses use `Cache-Control: no-store`; the application cache handles deduplication.
 
-For an agent: discover pools with catalog, read schedules on demand, inspect `error`/`stale`, and call the authenticated refresh endpoint only when the user requests a new check. Do not schedule polling unless you intentionally want recurring API/model calls.
+For an agent: discover pools with catalog, read schedules on demand, inspect `error`/`stale`, and call the authenticated refresh endpoint only when the user requests an immediate check. Background checks are already handled by pg-boss; agents do not need their own polling schedule.
 
 ## Verification
 
 ```sh
 bun run type
 bun test tests/core.test.ts
+# Set TEST_DATABASE_URL to a dedicated database whose name ends in _test.
+bun run test:db # real Postgres/pg-boss tests; mocked extraction, no model costs
 bun run test:e2e # Playwright Chromium; mocked data, no model costs
 bun run build   # no OPENAI_API_KEY required; no scraping or AI calls
 ```
 
-For a live parser check against all eight official sources (incurs model costs), open a view or call the schedule API with `OPENAI_API_KEY` configured. Test fixtures are never used as production schedules.
+For a live parser check against all eight official sources (incurs model costs on first/changed/week checks), start the worker with `OPENAI_API_KEY` configured or call the authenticated refresh API. Test fixtures are never used as production schedules.
 
 ## Favicons
 

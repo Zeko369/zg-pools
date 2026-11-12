@@ -39,9 +39,9 @@ const hr = {
   calendarIntro: "Jedan bazen ili cijeli grad. Tvoj tjedan za plivanje.",
   agendaIntro: "Odaberi dan i pronađi svoj termin.",
   loading: "Učitavanje",
-  checking: "Provjeravamo službene rasporede",
+  checking: "Učitavamo spremljene rasporede",
   checked: "Provjereno",
-  onDemand: "Rasporedi se dohvaćaju na zahtjev",
+  onDemand: "Rasporedi se automatski ažuriraju",
   refresh: "Osvježi podatke",
   loadFailed:
     "Dohvat nije uspio. Pokušajte ponovno ili otvorite službeni raspored.",
@@ -142,9 +142,9 @@ const en: typeof hr = {
   calendarIntro: "One pool or the whole city. Your week of swimming.",
   agendaIntro: "Pick a day and find your swim.",
   loading: "Loading",
-  checking: "Checking official schedules",
+  checking: "Loading saved schedules",
   checked: "Checked",
-  onDemand: "Schedules are loaded on demand",
+  onDemand: "Schedules update automatically",
   refresh: "Refresh schedules",
   loadFailed:
     "Could not load schedules. Try again or open the official schedule.",

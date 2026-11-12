@@ -102,16 +102,25 @@ async function sourceResponse(url: string) {
     throw new Error("Official source is too large");
   return bytes;
 }
-/** Only hours/about and notices tabs. Wellness, athletics, classes and prices are excluded. */
+export function normalizeSource(text: string) {
+  return text
+    .normalize("NFC")
+    .replace(/\u00a0/g, " ")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+/** Only hours/about and notices tab bodies. Page chrome never enters the fingerprint. */
 export function extractPageContent(
   html: string,
   url: string,
 ): { text: string; pdfUrls: string[] } {
   const $ = cheerio.load(html);
-  const root = $("#objekt-content").length
+  const container = $("#objekt-content").length
     ? $("#objekt-content")
     : $(".page-intro");
-  if (!root.length)
+  if (!container.length)
     throw new Error("Official page is missing facility content");
   const selected = new Set<string>();
   const tabId = new URL(url).searchParams.get("tab");
@@ -123,14 +132,25 @@ export function extractPageContent(
     }
   });
   if (!tabId)
-    root.children(".tab-pane.active").each((_, el) => {
+    container.children(".tab-pane.active").each((_, el) => {
       const id = $(el).attr("id");
       if (id) selected.add(id);
     });
-  root.children(".tab-pane").each((_, el) => {
-    if (!selected.has($(el).attr("id") ?? "")) $(el).remove();
-  });
-  root.find("script,style,nav,footer,iframe,.event-calendar").remove();
+  const root = $("<div></div>");
+  const panes = container.children(".tab-pane");
+  if (panes.length) {
+    panes.each((_, el) => {
+      if (selected.has($(el).attr("id") ?? "")) root.append($(el).clone());
+    });
+    if (!root.children().length)
+      throw new Error("Official page is missing schedule tabs");
+  } else {
+    // Svetice publishes its timetable link in a standalone article, without tabs.
+    root.append(container.clone());
+  }
+  root
+    .find("script,style,nav,footer,iframe,.event-calendar,.cjenik-wrapper")
+    .remove();
   const pdfUrls = root
     .find("a[href]")
     .filter((_, el) => /radno vrijeme.*(bazen|građanstvo)/i.test($(el).text()))
@@ -160,18 +180,12 @@ export function extractPageContent(
   });
   root.find("br").replaceWith("\n");
   root.find("p,li,h1,h2,h3,h4").append("\n");
-  const text = root
-    .text()
-    .replace(/\u00a0/g, " ")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n[ \t]+/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  const text = normalizeSource(root.text());
   if (text.length > 50_000)
     throw new Error(
       "Schedule content exceeds extraction limit; refusing to silently truncate",
     );
-  return { text, pdfUrls: [...new Set(pdfUrls)] };
+  return { text, pdfUrls: [...new Set(pdfUrls)].sort() };
 }
 async function pdfText(bytes: Uint8Array) {
   // Lazy import keeps PDF/canvas work out of app startup and non-PDF requests.
@@ -207,10 +221,13 @@ export async function scrapePoolContent(url: string): Promise<string> {
       .slice(0, 3)
       .map(
         async (href) =>
-          `\nOFFICIAL CITIZEN HOURS PDF: ${href}\n${await pdfText(await sourceResponse(href))}`,
+          `OFFICIAL CITIZEN HOURS PDF:\n${normalizeSource(await pdfText(await sourceResponse(href)))}`,
       ),
   );
-  const result = `SOURCE: ${url}\n${text}\n${documents.join("\n")}`;
+  // Hash semantic text, not HTML, PDF metadata, URLs or cache-busting query strings.
+  const result = `OFFICIAL FACILITY TAB CONTENT:\n${text}\n${documents.join("\n")}`;
+  if (result.length > 100_000)
+    throw new Error("Combined timetable exceeds extraction limit");
   if (!/\d{1,2}[:.]\d{2}|zatvoren|ne radi/i.test(result))
     throw new Error("No timetable or closure found on official source");
   return result;

@@ -1,15 +1,14 @@
 import "server-only";
-import { POOLS, scrapePoolContent, type Pool } from "./pools";
-import {
-  PARSER_MODEL,
-  parsePoolAvailability,
-  type PoolAvailability,
-} from "./ai";
-import { getWeekDates } from "./dates";
-import { RequestCache } from "./request-cache";
+import { POOLS, type Pool } from "./pools";
+import type { PoolAvailability } from "./ai";
+import { database } from "./db";
+import { refreshPool, scheduleScope } from "./refresh";
+import { sourceCheckIsStale } from "./cache-policy";
+
 export interface PoolData {
   pool: Pool;
   availability: PoolAvailability;
+  /** Last successful source check, including checks that reused an extraction. */
   fetchedAt: string;
   stale: boolean;
   model: string;
@@ -19,37 +18,43 @@ export interface PoolResult {
   data: PoolData | null;
   error: string | null;
 }
-// Shared across route bundles in a single server process. Nothing runs on import.
-const globalCache = globalThis as typeof globalThis & {
-  poolScheduleCache?: RequestCache<Omit<PoolData, "stale">>;
-};
-const cache = (globalCache.poolScheduleCache ??= new RequestCache<
-  Omit<PoolData, "stale">
->());
+
 export async function getPoolData(
   poolId: string,
   options: { force?: boolean } = {},
 ): Promise<PoolData> {
   const pool = POOLS.find((p) => p.id === poolId);
   if (!pool) throw new Error(`Pool not found: ${poolId}`);
-  const scope = `luna-v4-bilingual:${getWeekDates().currentWeek.monday}`;
-  const result = await cache.get(
-    poolId,
-    scope,
-    async () => {
-      const rawContent = await scrapePoolContent(pool.url);
-      const availability = await parsePoolAvailability(pool.name, rawContent);
-      return {
-        pool,
-        availability,
-        fetchedAt: new Date().toISOString(),
-        model: PARSER_MODEL,
-      };
-    },
-    options.force,
+  if (options.force) {
+    // Owner checks use the database lock, cooldown and content fingerprint too.
+    try {
+      await refreshPool(poolId);
+    } catch {
+      /* Read the retained snapshot below. */
+    }
+  }
+  const {
+    rows: [row],
+  } = await database().query(
+    `SELECT availability, model, checked_at, extracted_at, last_error
+    FROM pool_state WHERE pool_id = $1 AND scope = $2 AND availability IS NOT NULL`,
+    [poolId, scheduleScope()],
   );
-  return { ...result.value, stale: result.stale };
+  if (!row)
+    throw new Error(
+      "Schedules have not been loaded by the background worker yet",
+    );
+  return {
+    pool,
+    availability: row.availability,
+    fetchedAt: (row.checked_at ?? row.extracted_at).toISOString(),
+    stale:
+      !!row.last_error ||
+      sourceCheckIsStale(row.checked_at ?? row.extracted_at),
+    model: row.model,
+  };
 }
+
 export async function getPoolResults(
   options: { force?: boolean; poolId?: string } = {},
 ): Promise<PoolResult[]> {
@@ -62,11 +67,7 @@ export async function getPoolResults(
             data: await getPoolData(pool.id, options),
             error: null,
           };
-        } catch (error) {
-          console.error(
-            `Pool schedule failed (${pool.id}):`,
-            error instanceof Error ? error.message : "Unknown error",
-          );
+        } catch {
           return {
             pool,
             data: null,
