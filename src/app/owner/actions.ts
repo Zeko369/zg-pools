@@ -13,8 +13,11 @@ export async function signInOwner(formData: FormData) {
   const secret = process.env.POOLS_API_SECRET;
   if (!secret) redirect("/owner?error=unavailable");
   const key = formData.get("key");
+  const jobs = formData.get("next") === "/owner/jobs";
   if (typeof key !== "string" || !matchesSecret(key, secret))
-    redirect("/owner?error=invalid");
+    redirect(
+      jobs ? "/owner?error=invalid&next=/owner/jobs" : "/owner?error=invalid",
+    );
 
   (await cookies()).set(OWNER_COOKIE, createOwnerSession(secret), {
     httpOnly: true,
@@ -23,7 +26,7 @@ export async function signInOwner(formData: FormData) {
     path: "/",
     maxAge: OWNER_SESSION_SECONDS,
   });
-  redirect("/agenda");
+  redirect(jobs ? "/owner/jobs" : "/agenda");
 }
 
 export async function signOutOwner() {

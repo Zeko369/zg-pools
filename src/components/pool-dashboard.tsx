@@ -672,7 +672,7 @@ export function PoolDashboard({
                 ·{" "}
               </>
             )}
-            <a href="/api/openapi" target="_blank" rel="noreferrer">
+            <a href="/docs" target="_blank" rel="noreferrer">
               {t.agentApi} <ExternalLink size={11} />
             </a>
           </span>

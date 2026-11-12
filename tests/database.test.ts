@@ -19,6 +19,8 @@ import {
   REFRESH_SCHEDULES,
 } from "../src/lib/jobs";
 import { POOLS } from "../src/lib/pools";
+import { trackedModelFetch } from "../src/lib/model-metrics";
+import { getJobReport } from "../src/lib/job-report";
 
 mock.module("server-only", () => ({}));
 const { getPoolData } = await import("../src/lib/data");
@@ -70,7 +72,7 @@ integration(
     });
     beforeEach(async () => {
       await database().query(
-        "TRUNCATE pool_extractions, pool_source_versions, pool_state RESTART IDENTITY",
+        "TRUNCATE pool_ai_calls, pool_refresh_runs, pool_extractions, pool_source_versions, pool_state RESTART IDENTITY",
       );
     });
     afterAll(closeDatabase);
@@ -205,6 +207,125 @@ integration(
         ).rows[0].scope,
       ).toBe(scheduleScope(nextWeek));
       await expect(getPoolData(poolId)).rejects.toThrow("background worker");
+    });
+
+    test("source outcomes stay distinct and real model HTTP attempts include failed calls and validation failures", async () => {
+      const dependencies = {
+        scrape: async () => "Original",
+        parse: async (name: string) => parsed(name),
+      };
+      await refreshPool(poolId, dependencies, base);
+      await refreshPool(poolId, dependencies, later(1));
+      await refreshPool(poolId, dependencies, later(1));
+      await expect(
+        refreshPool(
+          poolId,
+          {
+            scrape: async () => "Changed",
+            parse: async (
+              _name: string,
+              _body: string,
+              _now = base,
+              runId?: string,
+              db?: Parameters<typeof trackedModelFetch>[3],
+            ) => {
+              const failed = trackedModelFetch(
+                "test-model",
+                runId,
+                async () =>
+                  Response.json(
+                    {
+                      error: { message: "private-payload-must-not-be-stored" },
+                    },
+                    { status: 429 },
+                  ),
+                db,
+              );
+              expect(
+                (await failed("https://api.example/responses")).status,
+              ).toBe(429);
+              const retry = trackedModelFetch(
+                "test-model",
+                runId,
+                async () =>
+                  Response.json({
+                    usage: {
+                      input_tokens: 100,
+                      output_tokens: 200,
+                      input_tokens_details: { cached_tokens: 10 },
+                      output_tokens_details: { reasoning_tokens: 50 },
+                    },
+                  }),
+                db,
+              );
+              const response = await retry("https://api.example/responses");
+              expect((await response.json()).usage.output_tokens).toBe(200);
+              throw new Error("Invalid model output after a paid response");
+            },
+          },
+          later(2),
+        ),
+      ).rejects.toThrow("Invalid model output");
+      const report = await getJobReport();
+      expect(report.summary).toMatchObject({
+        checks: 4,
+        cache_hits: 1,
+        extractions: 1,
+        failures: 1,
+        skipped: 1,
+      });
+      expect(report.summary.ai).toMatchObject({
+        requests: 2,
+        failures: 1,
+        input_tokens: 100,
+        output_tokens: 200,
+        cached_input_tokens: 10,
+        reasoning_tokens: 50,
+        unknown_usage: 1,
+      });
+      expect(report.runs.find((r) => r.status === "failed")?.ai_requests).toBe(
+        2,
+      );
+      expect(
+        JSON.stringify(
+          (await database().query("SELECT * FROM pool_ai_calls")).rows,
+        ),
+      ).not.toContain("private-payload");
+      expect((await getPoolData(poolId)).stale).toBe(true);
+    });
+
+    test("all eight parallel checks can report AI usage without starving their own database pool", async () => {
+      const results = await Promise.all(
+        POOLS.map((p) =>
+          refreshPool(
+            p.id,
+            {
+              scrape: async () => "Source",
+              parse: async (
+                name: string,
+                _body: string,
+                now = base,
+                runId?: string,
+                db?: Parameters<typeof trackedModelFetch>[3],
+              ) => {
+                await trackedModelFetch(
+                  "test",
+                  runId,
+                  async () =>
+                    Response.json({
+                      usage: { input_tokens: 1, output_tokens: 2 },
+                    }),
+                  db,
+                )("https://api.example/responses");
+                return parsed(name, now);
+              },
+            },
+            base,
+          ),
+        ),
+      );
+      expect(results.every((r) => r.status === "updated")).toBe(true);
+      expect((await getJobReport()).summary.ai.requests).toBe(8);
     });
 
     test("pg-boss stores timezone-aware cron, executes fan-out, deduplicates and persists the schedules", async () => {

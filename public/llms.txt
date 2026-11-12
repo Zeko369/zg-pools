@@ -21,6 +21,14 @@ Response interpretation:
 - Pool types are olympic (main/large pool, regardless of length), small (small/warm-up pool), children (children-only pool) and diving (diving pool). Slots contain HH:MM - HH:MM hours and optional lane restrictions.
 - If data is stale, unknown or unavailable, say so and offer the official source URL returned in the catalog. Earlier-week data is not reused for a new week. Do not invent missing hours or ignore holiday closures.
 
+## MCP and owner metrics
+
+- Remote MCP: POST /mcp using Streamable HTTP. Anonymous tools: list_pools, get_schedules, get_openapi. Catalog resource: pools://catalog.
+- A valid owner Bearer token additionally enables get_job_runs and check_sources. Never send owner keys in URLs.
+- Interactive Swagger UI: /docs.
+- Owner dashboard: /owner/jobs. JSON report: GET /api/jobs with an owner session or Bearer token.
+- Cache hits mean unchanged relevant source content; AI requests include SDK retries and failed requests. Metrics begin at trackingSince; earlier request counts are unknown.
+
 ## Documentation and discovery
 
 - [OpenAPI schema](/api/openapi): Authoritative API operations, parameters, pool IDs, response schemas and refresh authentication. No extraction.
