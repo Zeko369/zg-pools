@@ -498,12 +498,22 @@ for (const mode of ["calendar", "agenda"] as const) {
     await expect(desktopTrigger).toBeVisible();
     const headingBox = (await title.boundingBox())!;
     const menuBox = (await desktopTrigger.boundingBox())!;
+    const introBox = (await page.locator(".page-intro").boundingBox())!;
+    expect(
+      Math.abs(menuBox.x + menuBox.width - introBox.x - introBox.width),
+    ).toBeLessThan(1);
     expect(headingBox.x + headingBox.width).toBeLessThan(menuBox.x);
     expect(
       Math.abs(
         headingBox.y + headingBox.height / 2 - menuBox.y - menuBox.height / 2,
       ),
     ).toBeLessThan(2);
+    if (mode === "calendar") {
+      await expect(page.locator(".page-intro .schedule-status")).toHaveCount(0);
+      await expect(
+        page.locator(".sidebar-heading .schedule-status"),
+      ).toContainText("Checked");
+    }
     await desktopTrigger.focus();
     await page.keyboard.press("Enter");
     await expect(
@@ -947,6 +957,12 @@ test("an English browser gets translated notices, lane restrictions, errors and 
   await expect(
     page.getByText("A swimming cap is required", { exact: true }),
   ).toBeVisible();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const noticesBox = (await page.locator(".notices-section").boundingBox())!;
+  const introBox = (await page.locator(".page-intro").boundingBox())!;
+  expect(noticesBox.x).toBe(introBox.x);
+  expect(noticesBox.width).toBe(introBox.width);
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.locator(".swim-event").first().click();
   await expect(
     page.getByRole("region", { name: "Swim time details" }),

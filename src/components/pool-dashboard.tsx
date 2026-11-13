@@ -284,6 +284,16 @@ export function PoolDashboard({
   const fetched = results
     .flatMap((r) => (r.data ? [r.data.fetchedAt] : []))
     .sort()[0];
+  const scheduleStatus = (
+    <div className="schedule-status">
+      <span className={`live-dot ${loading ? "pending" : ""}`} />
+      {loading
+        ? t.checking
+        : fetched
+          ? `${t.checked} ${new Date(fetched).toLocaleString(LOCALES[language], { timeZone: "Europe/Zagreb", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}`
+          : t.onDemand}
+    </div>
+  );
   const failures = results.filter((r) => !r.data || r.data.stale);
   const dateLabel = weekLabel(week.monday, week.sunday, language);
   function changeWeek(index: number) {
@@ -407,15 +417,10 @@ export function PoolDashboard({
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-            <p>{mode === "agenda" ? t.agendaIntro : t.calendarIntro}</p>
-          </div>
-          <div className="intro-side">
-            <span className={`live-dot ${loading ? "pending" : ""}`} />
-            {loading
-              ? t.checking
-              : fetched
-                ? `${t.checked} ${new Date(fetched).toLocaleString(LOCALES[language], { timeZone: "Europe/Zagreb", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}`
-                : t.onDemand}
+            <div className="intro-description">
+              <p>{mode === "agenda" ? t.agendaIntro : t.calendarIntro}</p>
+              {mode === "agenda" ? scheduleStatus : null}
+            </div>
           </div>
         </section>
         {notice && (
@@ -553,6 +558,7 @@ export function PoolDashboard({
           {mode === "calendar" && (
             <aside className="pool-sidebar">
               <div className="sidebar-heading">
+                {scheduleStatus}
                 <h2>
                   {showFavorites
                     ? t.starredPools

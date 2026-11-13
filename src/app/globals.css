@@ -349,14 +349,13 @@ input:focus-visible {
   max-width: 610px;
   margin: 0;
 }
-.intro-side {
+.schedule-status {
   font-size: 11px;
   color: var(--muted-ink);
   display: flex;
   gap: 8px;
   align-items: center;
-  white-space: nowrap;
-  padding-bottom: 4px;
+  line-height: 1.5;
 }
 .live-dot {
   width: 6px;
@@ -612,10 +611,15 @@ input:focus-visible {
 }
 .sidebar-heading {
   display: flex;
+  flex-wrap: wrap;
+  row-gap: 8px;
   justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid var(--line);
   padding: 18px 16px;
+}
+.sidebar-heading .schedule-status {
+  flex-basis: 100%;
 }
 .sidebar-heading h2 {
   font-size: 14px;
@@ -912,7 +916,7 @@ input:focus-visible {
 }
 .notices-section {
   margin-top: 28px;
-  max-width: 900px;
+  max-width: none;
   border-top: 1px solid var(--line);
   padding-top: 20px;
 }
@@ -983,7 +987,7 @@ input:focus-visible {
     grid-template-columns: minmax(0, 1fr) 225px;
     gap: 17px;
   }
-  .intro-side {
+  .intro-description .schedule-status {
     display: none;
   }
   .page-intro h1 {
@@ -1308,7 +1312,7 @@ input:focus-visible {
 .page-intro p {
   font-size: 14px;
 }
-.intro-side {
+.schedule-status {
   font-size: 12px;
 }
 .date-navigation strong {
@@ -1981,6 +1985,12 @@ input:focus-visible {
 .intro-copy {
   flex: 1;
   min-width: 0;
+}
+.intro-description {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 .intro-title-row {
   display: flex;
