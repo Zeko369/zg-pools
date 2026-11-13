@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { POOLS } from "../src/lib/pools";
 import { getWeekDates, type DayInfo } from "../src/lib/dates";
 import type { WeekSchedule } from "../src/lib/ai";
@@ -11,6 +11,12 @@ test.beforeEach(({ page }) => {
 test.afterEach(() => {
   expect(runtimeErrors).toEqual([]);
 });
+
+async function selectPoolType(page: Page, label: string) {
+  await page.locator(".pool-type-menu").click();
+  await page.getByRole("menuitemradio", { name: label, exact: true }).click();
+  await expect(page.getByRole("menu")).toBeHidden();
+}
 
 function fixture() {
   const weeks = getWeekDates();
@@ -236,7 +242,7 @@ test("calendar pool/type/week controls use real state and source URLs", async ({
     "href",
     POOLS[1].url,
   );
-  await page.getByRole("button", { name: "Mali bazen", exact: true }).click();
+  await selectPoolType(page, "Mali bazen");
   await expect(page.locator(".swim-event").first()).toContainText(
     "06:30–21:30",
   );
@@ -284,7 +290,7 @@ test("agenda is the default, favorites persist first, and view links preserve UR
     .getByRole("button", { name: "Sljedeći tjedan", exact: true })
     .click();
   await page.locator(".agenda-dates button").nth(2).click();
-  await page.getByRole("button", { name: "Mali bazen", exact: true }).click();
+  await selectPoolType(page, "Mali bazen");
   const selection = new URL(page.url()).search;
   await page.getByRole("link", { name: "Kalendar", exact: true }).click();
   await expect(page).toHaveURL(/\/calendar\?/);
@@ -353,7 +359,7 @@ test("all-pool overlap shares colors with sidebar, filters facilities and shows 
       .evaluate((el) => getComputedStyle(el).backgroundColor);
     expect(border).toBe(dot);
   }
-  await page.getByRole("button", { name: "Sve vrste", exact: true }).click();
+  await selectPoolType(page, "Sve vrste");
   await expect(events).toHaveCount(84);
   const railPositions = await page
     .locator(".time-day")
@@ -363,7 +369,7 @@ test("all-pool overlap shares colors with sidebar, filters facilities and shows 
       elements.map((el) => (el as HTMLElement).style.left),
     );
   expect(new Set(railPositions).size).toBe(12);
-  await page.getByRole("button", { name: "Veliki bazen", exact: true }).click();
+  await selectPoolType(page, "Veliki bazen");
   await page
     .getByRole("checkbox", { name: "Prikaži Špansko", exact: true })
     .uncheck();
@@ -408,7 +414,7 @@ test("comparison navigation is gone and its old URL redirects to calendar", asyn
 });
 
 for (const mode of ["calendar", "agenda"] as const) {
-  test(`mobile ${mode} keeps pool types in the heading menu with keyboard support`, async ({
+  test(`${mode} keeps pool types in the heading menu across mobile and desktop with keyboard support`, async ({
     page,
     context,
   }) => {
@@ -426,7 +432,7 @@ for (const mode of ["calendar", "agenda"] as const) {
         .locator(mode === "calendar" ? ".swim-event" : ".agenda-item")
         .first(),
     ).toBeVisible();
-    await expect(page.locator(".schedule-toolbar")).toBeHidden();
+    await expect(page.locator(".schedule-toolbar")).toHaveCount(0);
     const trigger = page.getByRole("button", {
       name: "Pool type: Main pool",
       exact: true,
@@ -485,11 +491,33 @@ for (const mode of ["calendar", "agenda"] as const) {
       .click();
     await expect(page).toHaveURL(/type=all/);
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await expect(page.locator(".schedule-toolbar")).toBeVisible();
-    await expect(page.locator(".mobile-type-menu")).toBeHidden();
+    const desktopTrigger = page.getByRole("button", {
+      name: "Pool type: All types",
+      exact: true,
+    });
+    await expect(desktopTrigger).toBeVisible();
+    const headingBox = (await title.boundingBox())!;
+    const menuBox = (await desktopTrigger.boundingBox())!;
+    expect(headingBox.x + headingBox.width).toBeLessThan(menuBox.x);
+    expect(
+      Math.abs(
+        headingBox.y + headingBox.height / 2 - menuBox.y - menuBox.height / 2,
+      ),
+    ).toBeLessThan(2);
+    await desktopTrigger.focus();
+    await page.keyboard.press("Enter");
     await expect(
-      page.getByRole("button", { name: "All types", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
+      page.getByRole("menuitemradio", { name: "All types", exact: true }),
+    ).toBeChecked();
+    await page.keyboard.press("Home");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/type=olympic/);
+    await expect(trigger).toBeFocused();
+    await expect(
+      page
+        .locator(mode === "calendar" ? ".swim-event" : ".agenda-item")
+        .first(),
+    ).toContainText(mode === "calendar" ? "06:30–20:00" : "06:30 - 20:00");
   });
 }
 
@@ -572,18 +600,7 @@ for (const viewport of [
       .click();
     await expect(events).toHaveCount(14);
     await page.getByRole("button", { name: "Next week", exact: true }).click();
-    if (viewport.width <= 600) {
-      await page
-        .getByRole("button", { name: "Pool type: Main pool", exact: true })
-        .click();
-      await page
-        .getByRole("menuitemradio", { name: "Small pool", exact: true })
-        .click();
-    } else {
-      await page
-        .getByRole("button", { name: "Small pool", exact: true })
-        .click();
-    }
+    await selectPoolType(page, "Small pool");
     await expect(events.first()).toContainText("06:30–21:30");
     await page.reload();
     await expect(starred).toHaveAttribute("aria-pressed", "true");

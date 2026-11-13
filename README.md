@@ -6,7 +6,7 @@ Find public swimming times across Zagreb in one place. Bazeni Zagreb brings toge
 
 ## What it does
 
-- **Weekly calendar:** browse one facility, choose **Svi objekti** to compare all eight, or **Omiljeni bazeni / Starred pools** to overlay just your favorites. Filter by pool type (in the three-dot menu beside the heading on mobile), hide facilities, and select a time block for details.
+- **Weekly calendar:** browse one facility, choose **Svi objekti** to compare all eight, or **Omiljeni bazeni / Starred pools** to overlay just your favorites. Filter by pool type (in the three-dot menu beside the heading), hide facilities, and select a time block for details.
 - **Daily agenda:** the default view. Pick a date and see each pool's public swimming slots. Star favorites to pin them first; favorites are saved in this browser.
 - **Schedule details:** see holiday changes, closure notices, pool types, and lane restrictions when published by the official source.
 

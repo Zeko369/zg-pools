@@ -380,7 +380,7 @@ export function PoolDashboard({
                   <Button
                     variant="outline"
                     size="icon-lg"
-                    className="mobile-type-menu"
+                    className="pool-type-menu"
                     aria-label={`${t.poolType}: ${typeOptions.find((option) => option.value === type)?.label}`}
                   >
                     <MoreHorizontal />
@@ -452,19 +452,6 @@ export function PoolDashboard({
             </div>
           </details>
         )}
-        <div className="schedule-toolbar">
-          <div className="type-switch" aria-label={t.poolType}>
-            {typeOptions.map(({ value, label }) => (
-              <button
-                key={value}
-                aria-pressed={type === value}
-                onClick={() => selectType(value)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
         {mode === "calendar" ? (
           <div className="pool-tabs" aria-label={t.chooseFacility}>
             <button

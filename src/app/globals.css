@@ -368,13 +368,6 @@ input:focus-visible {
 .live-dot.pending {
   background: #e1a54f;
 }
-.schedule-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 23px;
-}
 .date-navigation {
   display: flex;
   align-items: center;
@@ -405,27 +398,6 @@ input:focus-visible {
   color: var(--muted-ink);
   font-size: 10px;
   margin-top: 3px;
-}
-.type-switch {
-  display: flex;
-  padding: 4px;
-  background: var(--surface-subtle);
-  border-radius: 7px;
-  gap: 2px;
-}
-.type-switch button {
-  color: var(--muted-ink);
-  border: 0;
-  background: transparent;
-  padding: 7px 14px;
-  font-size: 11px;
-  font-weight: 550;
-  border-radius: 5px;
-}
-.type-switch button[aria-pressed="true"] {
-  color: var(--ink);
-  background: var(--background);
-  box-shadow: 0 1px 4px #10234312;
 }
 .pool-tabs {
   display: flex;
@@ -1134,11 +1106,6 @@ input:focus-visible {
     font-size: 13px;
     line-height: 1.6;
   }
-  .schedule-toolbar {
-    flex-wrap: wrap;
-    gap: 17px;
-    margin-bottom: 17px;
-  }
   .date-navigation {
     width: 100%;
     justify-content: space-between;
@@ -1148,13 +1115,6 @@ input:focus-visible {
   }
   .date-navigation strong {
     font-size: 13px;
-  }
-  .type-switch {
-    width: 100%;
-  }
-  .type-switch button {
-    flex: 1;
-    padding: 7px 9px;
   }
   .pool-tabs {
     flex-wrap: nowrap;
@@ -1297,13 +1257,6 @@ input:focus-visible {
   }
 }
 
-@media (max-width: 600px) {
-  .type-switch button {
-    padding: 7px 6px;
-    font-size: 10px;
-    white-space: nowrap;
-  }
-}
 
 /* Calendar refinements: calmer hierarchy and one facility palette everywhere. */
 .header-inner {
@@ -1363,9 +1316,6 @@ input:focus-visible {
 }
 .date-navigation > div > span {
   font-size: 11px;
-}
-.type-switch button {
-  font-size: 12px;
 }
 .pool-tabs button {
   font-size: 13px;
@@ -1830,10 +1780,6 @@ input:focus-visible {
   .pool-tabs button {
     font-size: 12px;
   }
-  .type-switch button {
-    font-size: 11px;
-    padding: 7px 6px;
-  }
   .pool-sidebar {
     display: block;
   }
@@ -2032,10 +1978,8 @@ input:focus-visible {
   letter-spacing: -1px;
   margin-bottom: 8px;
 }
-.schedule-toolbar {
-  justify-content: flex-end;
-}
 .intro-copy {
+  flex: 1;
   min-width: 0;
 }
 .intro-title-row {
@@ -2047,9 +1991,6 @@ input:focus-visible {
 }
 .intro-title-row h1 {
   margin-bottom: 0;
-}
-.mobile-type-menu {
-  display: none;
 }
 .favorite-button {
   color: var(--muted-ink);
@@ -2145,22 +2086,8 @@ input:focus-visible {
   .intro-copy {
     width: 100%;
   }
-  .mobile-type-menu {
-    display: inline-flex;
-  }
   .page-intro p {
     font-size: 12px;
-  }
-  .schedule-toolbar {
-    display: none;
-  }
-  .type-switch {
-    overflow-x: auto;
-  }
-  .type-switch button {
-    min-height: 40px;
-    white-space: nowrap;
-    padding: 8px;
   }
   .agenda-dates {
     gap: 4px;
