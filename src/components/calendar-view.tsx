@@ -36,6 +36,8 @@ export function CalendarView({
   focusDate,
   loading,
   overlap,
+  overlapLabel,
+  emptyMessage,
   highlightedPool,
   selectedSlot,
   onSelectSlot,
@@ -49,6 +51,8 @@ export function CalendarView({
   focusDate: string;
   loading: boolean;
   overlap: boolean;
+  overlapLabel: string;
+  emptyMessage: string;
   highlightedPool: string | null;
   selectedSlot: CalendarSlot | null;
   onSelectSlot: (slot: CalendarSlot | null) => void;
@@ -140,7 +144,7 @@ export function CalendarView({
       }}
       aria-label={
         overlap
-          ? `${t.weeklyCalendar}: ${t.allFacilities.toLocaleLowerCase()}`
+          ? `${t.weeklyCalendar}: ${overlapLabel.toLocaleLowerCase()}`
           : `${t.weeklyCalendar}: ${pools[0]?.shortName ?? t.pools}`
       }
     >
@@ -353,7 +357,7 @@ export function CalendarView({
             {pool.shortName}
           </button>
         ))}
-        {!pools.length && <span>{t.chooseOne}</span>}
+        {!pools.length && <span>{emptyMessage}</span>}
       </div>
     </section>
   );

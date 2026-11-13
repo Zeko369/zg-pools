@@ -1378,7 +1378,9 @@ input:focus-visible {
 }
 .pool-tabs .all-pools-tab {
   border-radius: 6px;
-  margin-right: 4px;
+  min-width: 40px;
+  min-height: 40px;
+  justify-content: center;
 }
 .pool-tabs .all-pools-tab[aria-pressed="true"] {
   background: var(--ink);
@@ -2033,6 +2035,22 @@ input:focus-visible {
 .schedule-toolbar {
   justify-content: flex-end;
 }
+.intro-copy {
+  min-width: 0;
+}
+.intro-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.intro-title-row h1 {
+  margin-bottom: 0;
+}
+.mobile-type-menu {
+  display: none;
+}
 .favorite-button {
   color: var(--muted-ink);
   flex: none;
@@ -2122,13 +2140,19 @@ input:focus-visible {
     padding: 22px 0 18px;
   }
   .page-intro h1 {
-    font-size: 25px;
+    font-size: clamp(20px, 6vw, 25px);
+  }
+  .intro-copy {
+    width: 100%;
+  }
+  .mobile-type-menu {
+    display: inline-flex;
   }
   .page-intro p {
     font-size: 12px;
   }
   .schedule-toolbar {
-    margin-bottom: 16px;
+    display: none;
   }
   .type-switch {
     overflow-x: auto;

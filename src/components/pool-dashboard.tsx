@@ -11,11 +11,21 @@ import {
   Info,
   Layers,
   List,
+  MoreHorizontal,
   RefreshCw,
   Star,
   Waves,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { revalidatePools } from "@/lib/actions";
 import type { Pool } from "@/lib/pools";
 import type { PoolResult } from "@/lib/data";
@@ -107,6 +117,7 @@ export function PoolDashboard({
   const weekIndex = params.get("week") === "next" ? 1 : 0;
   const selectedPool =
     params.get("pool") === "all" ||
+    params.get("pool") === "favorites" ||
     catalog.some((p) => p.id === params.get("pool"))
       ? params.get("pool")!
       : orderedCatalog[0].id;
@@ -121,6 +132,19 @@ export function PoolDashboard({
     ? (requestedType as PoolType | "all")
     : "olympic";
   const selectedDate = params.get("date") ?? today;
+  const typeOptions = (
+    ["olympic", "small", "children", "diving", "all"] as const
+  ).map((value) => ({
+    value,
+    label:
+      value === "all"
+        ? t.allTypes
+        : value === "diving"
+          ? t.divingFilter
+          : value === "small"
+            ? t.smallFilter
+            : t.poolTypes[value],
+  }));
   const [notice, setNotice] = useState<NoticeKey | null>(null);
   function updateParams(values: Record<string, string>) {
     const next = new URLSearchParams(params.toString());
@@ -129,6 +153,16 @@ export function PoolDashboard({
   }
   const [selectedSlot, setSelectedSlot] = useState<CalendarSlot | null>(null);
   const [highlightedPool, setHighlightedPool] = useState<string | null>(null);
+  function selectType(value: string) {
+    updateParams({ type: value });
+    setSelectedSlot(null);
+    setHighlightedPool(null);
+  }
+  function changeFavorite(id: string) {
+    toggleFavorite(id);
+    setSelectedSlot(null);
+    setHighlightedPool(null);
+  }
   function selectPool(id: string) {
     updateParams({ pool: id });
     setSelectedSlot(null);
@@ -220,13 +254,17 @@ export function PoolDashboard({
       ? today
       : parseDate(week.monday).toISOString().slice(0, 10);
   const showAll = selectedPool === "all";
+  const showFavorites = selectedPool === "favorites";
+  const showOverlay = showAll || showFavorites;
   const selected = catalog.find((p) => p.id === selectedPool);
   const activeResult = results.find((r) => r.pool.id === selected?.id);
-  const calendarPools = showAll
-    ? catalog.filter((p) => !hiddenPools.includes(p.id))
-    : selected
-      ? [selected]
-      : [];
+  const calendarPools = showFavorites
+    ? catalog.filter((p) => favorites.includes(p.id))
+    : showAll
+      ? catalog.filter((p) => !hiddenPools.includes(p.id))
+      : selected
+        ? [selected]
+        : [];
   const visible = orderedCatalog.filter((p) => !hiddenPools.includes(p.id));
   async function retryFailed() {
     setLoading(true);
@@ -334,8 +372,41 @@ export function PoolDashboard({
           </nav>
         </div>
         <section className="page-intro">
-          <div>
-            <h1>{mode === "agenda" ? t.agenda : t.scheduleTitle}</h1>
+          <div className="intro-copy">
+            <div className="intro-title-row">
+              <h1>{mode === "agenda" ? t.agenda : t.scheduleTitle}</h1>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon-lg"
+                    className="mobile-type-menu"
+                    aria-label={`${t.poolType}: ${typeOptions.find((option) => option.value === type)?.label}`}
+                  >
+                    <MoreHorizontal />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-56">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>{t.poolType}</DropdownMenuLabel>
+                    <DropdownMenuRadioGroup
+                      value={type}
+                      onValueChange={selectType}
+                    >
+                      {typeOptions.map(({ value, label }) => (
+                        <DropdownMenuRadioItem
+                          key={value}
+                          value={value}
+                          className="min-h-11"
+                        >
+                          {label}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
             <p>{mode === "agenda" ? t.agendaIntro : t.calendarIntro}</p>
           </div>
           <div className="intro-side">
@@ -383,26 +454,15 @@ export function PoolDashboard({
         )}
         <div className="schedule-toolbar">
           <div className="type-switch" aria-label={t.poolType}>
-            {(["olympic", "small", "children", "diving", "all"] as const).map(
-              (value) => (
-                <button
-                  key={value}
-                  aria-pressed={type === value}
-                  onClick={() => {
-                    updateParams({ type: value });
-                    setSelectedSlot(null);
-                  }}
-                >
-                  {value === "all"
-                    ? t.allTypes
-                    : value === "diving"
-                      ? t.divingFilter
-                      : value === "small"
-                        ? t.smallFilter
-                        : t.poolTypes[value]}
-                </button>
-              ),
-            )}
+            {typeOptions.map(({ value, label }) => (
+              <button
+                key={value}
+                aria-pressed={type === value}
+                onClick={() => selectType(value)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
         {mode === "calendar" ? (
@@ -410,10 +470,26 @@ export function PoolDashboard({
             <button
               className="all-pools-tab"
               aria-pressed={showAll}
+              aria-label={t.allFacilities}
+              title={t.allFacilities}
               onClick={() => selectPool("all")}
             >
-              <Layers size={14} />
-              {t.allFacilities}
+              <Layers size={14} aria-hidden="true" />
+              {showAll && <span>{t.allFacilities}</span>}
+            </button>
+            <button
+              className="all-pools-tab starred-pools-tab"
+              aria-pressed={showFavorites}
+              aria-label={t.starredPools}
+              title={t.starredPools}
+              onClick={() => selectPool("favorites")}
+            >
+              <Star
+                size={14}
+                fill={showFavorites ? "currentColor" : "none"}
+                aria-hidden="true"
+              />
+              {showFavorites && <span>{t.starredPools}</span>}
             </button>
             {orderedCatalog.map((pool) => (
               <button
@@ -431,6 +507,12 @@ export function PoolDashboard({
             ))}
           </div>
         ) : null}
+        {mode === "calendar" && showFavorites && favorites.length === 0 && (
+          <div className="status-callout" role="status">
+            <Star size={16} />
+            {t.starredPoolsHelp}
+          </div>
+        )}
         {mode === "agenda" && (
           <div className="agenda-dates">
             {week.days.map((info) => {
@@ -457,7 +539,9 @@ export function PoolDashboard({
             <CalendarView
               pools={calendarPools}
               results={results}
-              overlap={showAll}
+              overlap={showOverlay}
+              overlapLabel={showFavorites ? t.starredPools : t.allFacilities}
+              emptyMessage={showFavorites ? t.starredPoolsHelp : t.chooseOne}
               highlightedPool={highlightedPool}
               selectedSlot={selectedSlot}
               onSelectSlot={setSelectedSlot}
@@ -476,16 +560,22 @@ export function PoolDashboard({
               loading={loading}
               type={type}
               favorites={favorites}
-              onToggleFavorite={toggleFavorite}
+              onToggleFavorite={changeFavorite}
             />
           )}
           {mode === "calendar" && (
             <aside className="pool-sidebar">
               <div className="sidebar-heading">
-                <h2>{showAll ? t.calendarFacilities : t.cityPools}</h2>
+                <h2>
+                  {showFavorites
+                    ? t.starredPools
+                    : showAll
+                      ? t.calendarFacilities
+                      : t.cityPools}
+                </h2>
                 <span>
                   {t.facilities(
-                    showAll ? calendarPools.length : catalog.length,
+                    showOverlay ? calendarPools.length : catalog.length,
                   )}
                 </span>
               </div>
@@ -496,9 +586,7 @@ export function PoolDashboard({
                     result,
                     today.split("-").reverse().join("."),
                   );
-                  const visible = showAll
-                    ? !hiddenPools.includes(pool.id)
-                    : selectedPool === pool.id;
+                  const visible = calendarPools.some((p) => p.id === pool.id);
                   const status =
                     loading && !result
                       ? `${t.loading}…`
@@ -516,7 +604,7 @@ export function PoolDashboard({
                       key={pool.id}
                       style={poolColorStyle(pool.color)}
                       onMouseEnter={() => {
-                        if (showAll) setHighlightedPool(pool.id);
+                        if (showOverlay && visible) setHighlightedPool(pool.id);
                       }}
                       onMouseLeave={() => setHighlightedPool(null)}
                     >
@@ -557,7 +645,7 @@ export function PoolDashboard({
                       <FavoriteButton
                         pool={pool}
                         favorite={favorites.includes(pool.id)}
-                        onToggle={() => toggleFavorite(pool.id)}
+                        onToggle={() => changeFavorite(pool.id)}
                       />
                       <button
                         className="isolate-pool"
@@ -570,12 +658,14 @@ export function PoolDashboard({
                   );
                 })}
               </div>
-              {showAll && (
+              {showOverlay && (
                 <div className="overlap-help">
                   <Layers size={20} />
                   <h3>{t.overlapTitle}</h3>
                   <p>{t.overlapHelp}</p>
-                  <p>{t.overlapControls}</p>
+                  <p>
+                    {showFavorites ? t.starredPoolsHelp : t.overlapControls}
+                  </p>
                 </div>
               )}
               {selected && (
