@@ -30,6 +30,8 @@ export function detectLanguage(
 }
 
 const hr = {
+  theme: "Tema",
+  themes: { light: "Svijetla", dark: "Tamna", system: "Sustav" },
   title: "Bazeni Zagreb · Raspored plivanja",
   description: "Dostupnost javnih bazena u Zagrebu",
   calendar: "Kalendar",
@@ -133,6 +135,8 @@ const hr = {
 };
 
 const en: typeof hr = {
+  theme: "Theme",
+  themes: { light: "Light", dark: "Dark", system: "System" },
   title: "Bazeni Zagreb · Swimming schedules",
   description: "Public swimming schedules for Zagreb pools",
   calendar: "Calendar",

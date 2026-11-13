@@ -32,6 +32,7 @@ import {
 } from "@/lib/i18n";
 import { useLanguage } from "./language-provider";
 import { LanguageSwitcher } from "./language-switcher";
+import { ThemeSwitcher } from "./theme-switcher";
 
 import { CalendarView, type CalendarSlot } from "./calendar-view";
 import { poolColorStyle } from "@/lib/pool-colors";
@@ -275,6 +276,7 @@ export function PoolDashboard({
             </span>
           </Link>
           <div className="header-actions">
+            <ThemeSwitcher />
             <LanguageSwitcher />
             {canRefresh && (
               <Button

@@ -13,6 +13,7 @@ import { signInOwner, signOutOwner } from "./actions";
 import { requestLanguage } from "@/lib/request-language";
 import { messages } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { ThemeSwitcher } from "@/components/theme-switcher";
 
 export async function generateMetadata(): Promise<Metadata> {
   return {
@@ -39,7 +40,10 @@ export default async function OwnerPage({
         <Link href="/agenda" prefetch={false}>
           ← {t.backToSchedule}
         </Link>
-        <LanguageSwitcher />
+        <div className="header-actions">
+          <ThemeSwitcher />
+          <LanguageSwitcher />
+        </div>
       </div>
       <h1>{t.ownerAccess}</h1>
       {owner ? (
