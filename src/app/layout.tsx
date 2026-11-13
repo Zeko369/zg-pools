@@ -4,6 +4,7 @@ import "./globals.css";
 import { LanguageProvider } from "@/components/language-provider";
 import { requestLanguage } from "@/lib/request-language";
 import { messages } from "@/lib/i18n";
+import { ThemeProvider } from "@/components/theme-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,14 +28,16 @@ export default async function RootLayout({
 }>) {
   const language = await requestLanguage();
   return (
-    <html lang={language}>
+    <html lang={language} suppressHydrationWarning>
       <head>
         <link rel="describedby" href="/llms.txt" type="text/plain" />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <LanguageProvider language={language}>{children}</LanguageProvider>
+        <ThemeProvider>
+          <LanguageProvider language={language}>{children}</LanguageProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -22,6 +22,10 @@ Use the language button in the header (also available on `/owner`) to switch. Yo
 
 Both translations of source notices, closure reasons, and lane restrictions are produced by the same schedule extraction and cached together. Switching language preserves the current view and does not trigger another schedule request or model call.
 
+## Appearance
+
+Use the three-way theme control in the header to choose **Light**, **Dark**, or **System**. System is the default and follows your device's appearance, including changes while the app is open. Explicit choices are saved in this browser and apply across the agenda, calendar, and owner pages.
+
 ## Pools
 
 Each facility links to its official Sportski objekti source.

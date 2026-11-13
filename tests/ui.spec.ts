@@ -65,6 +65,127 @@ function fixture() {
     })),
   };
 }
+test("theme defaults to System and follows live device appearance changes", async ({
+  page,
+}) => {
+  await page.route("**/api/pools/*", (route) =>
+    route.fulfill({ json: fixture() }),
+  );
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/agenda");
+  const themes = page.getByRole("radiogroup", { name: "Tema", exact: true });
+  await expect(
+    themes.getByRole("radio", { name: "Sustav", exact: true }),
+  ).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator("html")).toHaveClass("dark");
+  await expect(page.locator("body")).toHaveCSS(
+    "background-color",
+    "rgb(13, 23, 38)",
+  );
+  await expect(page.locator(".app-header")).toHaveCSS(
+    "background-color",
+    "rgb(13, 23, 38)",
+  );
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveClass("light");
+  await expect(page.locator("body")).toHaveCSS(
+    "background-color",
+    "rgb(255, 255, 255)",
+  );
+  await expect(
+    themes.getByRole("radio", { name: "Sustav", exact: true }),
+  ).toHaveAttribute("aria-checked", "true");
+});
+
+test("theme overrides persist across reloads, views, languages and owner settings", async ({
+  page,
+}) => {
+  await page.route("**/api/pools/*", (route) =>
+    route.fulfill({ json: fixture() }),
+  );
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/agenda");
+  const themes = page.getByRole("radiogroup", { name: "Tema", exact: true });
+  await themes.getByRole("radio", { name: "Tamna", exact: true }).click();
+  await expect(page.locator("html")).toHaveClass("dark");
+  expect(
+    await page.evaluate(() => localStorage.getItem("zg-pools:theme:v1")),
+  ).toBe("dark");
+  await page.reload();
+  await expect(
+    themes.getByRole("radio", { name: "Tamna", exact: true }),
+  ).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator("html")).toHaveClass("dark");
+  await page.getByRole("link", { name: "Kalendar", exact: true }).click();
+  await expect(page.locator(".swim-event").first()).toBeVisible();
+  await expect(page.locator(".time-axis")).toHaveCSS(
+    "background-color",
+    "rgb(13, 23, 38)",
+  );
+  await expect(page.locator(".swim-event").first()).toHaveCSS(
+    "background-color",
+    "rgb(21, 59, 58)",
+  );
+  await page
+    .getByRole("button", { name: "Switch to English", exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole("radiogroup", { name: "Theme", exact: true })
+      .getByRole("radio", { name: "Dark", exact: true }),
+  ).toHaveAttribute("aria-checked", "true");
+  await page.goto("/owner");
+  await expect(
+    page
+      .getByRole("radiogroup", { name: "Theme", exact: true })
+      .getByRole("radio", { name: "Dark", exact: true }),
+  ).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator("html")).toHaveClass("dark");
+});
+
+test("theme toggle supports keyboard selection and fits narrow screens", async ({
+  page,
+}) => {
+  await page.route("**/api/pools/*", (route) =>
+    route.fulfill({ json: fixture() }),
+  );
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/agenda");
+  const themes = page.getByRole("radiogroup", { name: "Tema", exact: true });
+  const light = themes.getByRole("radio", { name: "Svijetla", exact: true });
+  await expect(light).toBeEnabled();
+  await light.focus();
+  await page.keyboard.press("Space");
+  await expect(page.locator("html")).toHaveClass("light");
+  await page.keyboard.press("ArrowRight");
+  await expect(
+    themes.getByRole("radio", { name: "Tamna", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(page.locator("html")).toHaveClass("dark");
+  await page.keyboard.press("Space");
+  await expect(
+    themes.getByRole("radio", { name: "Tamna", exact: true }),
+  ).toHaveAttribute("aria-checked", "true");
+  await themes.getByRole("radio", { name: "Sustav", exact: true }).click();
+  await page.reload();
+  await expect(
+    themes.getByRole("radio", { name: "Sustav", exact: true }),
+  ).toHaveAttribute("aria-checked", "true");
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveClass("light");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  const bounds = await themes.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
+});
+
 test("hidden page does no extraction; visibility triggers one request per pool, never polling", async ({
   page,
 }) => {
