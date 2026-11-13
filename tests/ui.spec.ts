@@ -406,6 +406,218 @@ test("comparison navigation is gone and its old URL redirects to calendar", asyn
     page.getByRole("link", { name: "Usporedba", exact: true }),
   ).toHaveCount(0);
 });
+
+for (const mode of ["calendar", "agenda"] as const) {
+  test(`mobile ${mode} keeps pool types in the heading menu with keyboard support`, async ({
+    page,
+    context,
+  }) => {
+    await context.addCookies([
+      { name: "pools-language", value: "en", domain: "127.0.0.1", path: "/" },
+    ]);
+    await page.route("**/api/pools/*", (route) =>
+      route.fulfill({ json: fixture() }),
+    );
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.goto(`/${mode}?pool=bazen-spansko`);
+    await expect(
+      page
+        .locator(mode === "calendar" ? ".swim-event" : ".agenda-item")
+        .first(),
+    ).toBeVisible();
+    await expect(page.locator(".schedule-toolbar")).toBeHidden();
+    const trigger = page.getByRole("button", {
+      name: "Pool type: Main pool",
+      exact: true,
+    });
+    const title = page.getByRole("heading", { level: 1 });
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      const headingBox = (await title.boundingBox())!;
+      const menuBox = (await trigger.boundingBox())!;
+      expect(
+        Math.abs(
+          headingBox.y + headingBox.height / 2 - menuBox.y - menuBox.height / 2,
+        ),
+      ).toBeLessThan(2);
+      expect(headingBox.x + headingBox.width).toBeLessThan(menuBox.x);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBe(width);
+    }
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    const menu = page.getByRole("menu");
+    await expect(menu.getByRole("menuitemradio")).toHaveCount(5);
+    await expect(
+      menu.getByRole("menuitemradio", { name: "Main pool", exact: true }),
+    ).toBeChecked();
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect(trigger).toBeFocused();
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Home");
+    await page.keyboard.press("ArrowDown");
+    await expect(
+      menu.getByRole("menuitemradio", { name: "Small pool", exact: true }),
+    ).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(menu).toBeHidden();
+    await expect(page).toHaveURL(/type=small/);
+    await expect(
+      page.getByRole("button", { name: "Pool type: Small pool", exact: true }),
+    ).toBeFocused();
+    await expect(
+      page
+        .locator(mode === "calendar" ? ".swim-event" : ".agenda-item")
+        .first(),
+    ).toContainText(mode === "calendar" ? "06:30–21:30" : "06:30 - 21:30");
+    await page.reload();
+    await page
+      .getByRole("button", { name: "Pool type: Small pool", exact: true })
+      .click();
+    await expect(
+      page.getByRole("menuitemradio", { name: "Small pool", exact: true }),
+    ).toBeChecked();
+    await page
+      .getByRole("menuitemradio", { name: "All types", exact: true })
+      .click();
+    await expect(page).toHaveURL(/type=all/);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await expect(page.locator(".schedule-toolbar")).toBeVisible();
+    await expect(page.locator(".mobile-type-menu")).toBeHidden();
+    await expect(
+      page.getByRole("button", { name: "All types", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+}
+
+for (const viewport of [
+  { width: 1440, height: 1000 },
+  { width: 390, height: 844 },
+]) {
+  test(`starred pools overlay only saved favorites and update immediately at ${viewport.width}px`, async ({
+    page,
+    context,
+  }) => {
+    await context.addCookies([
+      { name: "pools-language", value: "en", domain: "127.0.0.1", path: "/" },
+    ]);
+    await page.setViewportSize(viewport);
+    await page.route("**/api/pools/*", (route) =>
+      route.fulfill({ json: fixture() }),
+    );
+    await page.addInitScript(() => {
+      if (!localStorage.getItem("zg-pools:favorites:v1")) {
+        localStorage.setItem(
+          "zg-pools:favorites:v1",
+          JSON.stringify(["bazen-spansko", "bazenski-kompleks-utrina"]),
+        );
+      }
+    });
+    await page.goto("/calendar?pool=favorites");
+    const starred = page.getByRole("button", {
+      name: "Starred pools",
+      exact: true,
+    });
+    const events = page.locator(".swim-event");
+    await expect(starred).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      page.getByRole("region", {
+        name: "Weekly calendar: starred pools",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(events).toHaveCount(14);
+    expect(
+      await events.evaluateAll((items) =>
+        [
+          ...new Set(items.map((item) => item.getAttribute("data-pool-id"))),
+        ].sort(),
+      ),
+    ).toEqual(["bazen-spansko", "bazenski-kompleks-utrina"]);
+    await page
+      .getByRole("button", { name: "All facilities", exact: true })
+      .click();
+    await page
+      .getByRole("checkbox", { name: "Show Špansko", exact: true })
+      .uncheck();
+    await starred.click();
+    await expect(events).toHaveCount(14);
+    await page
+      .locator('.swim-event[data-pool-id="bazen-spansko"]')
+      .first()
+      .focus();
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("region", { name: "Swim time details" }),
+    ).toContainText("Špansko");
+    await page
+      .getByRole("button", {
+        name: "Remove from favorites: Špansko",
+        exact: true,
+      })
+      .click();
+    await expect(events).toHaveCount(7);
+    await expect(
+      page.getByRole("region", { name: "Swim time details" }),
+    ).toHaveCount(0);
+    await expect(
+      page.locator('.swim-event[data-pool-id="bazen-spansko"]'),
+    ).toHaveCount(0);
+    await expect(starred).toHaveAttribute("aria-pressed", "true");
+    await page
+      .getByRole("button", { name: "Add to favorites: Jelkovec", exact: true })
+      .click();
+    await expect(events).toHaveCount(14);
+    await page.getByRole("button", { name: "Next week", exact: true }).click();
+    if (viewport.width <= 600) {
+      await page
+        .getByRole("button", { name: "Pool type: Main pool", exact: true })
+        .click();
+      await page
+        .getByRole("menuitemradio", { name: "Small pool", exact: true })
+        .click();
+    } else {
+      await page
+        .getByRole("button", { name: "Small pool", exact: true })
+        .click();
+    }
+    await expect(events.first()).toContainText("06:30–21:30");
+    await page.reload();
+    await expect(starred).toHaveAttribute("aria-pressed", "true");
+    await expect(events).toHaveCount(14);
+    await expect(events.first()).toContainText("06:30–21:30");
+    expect(new URL(page.url()).searchParams.get("week")).toBe("next");
+    await page.getByRole("link", { name: "Daily agenda", exact: true }).click();
+    await page.getByRole("link", { name: "Calendar", exact: true }).click();
+    await expect(starred).toHaveAttribute("aria-pressed", "true");
+    await expect(events).toHaveCount(14);
+    await page
+      .getByRole("button", {
+        name: "Remove from favorites: Utrina",
+        exact: true,
+      })
+      .click();
+    await page
+      .getByRole("button", {
+        name: "Remove from favorites: Jelkovec",
+        exact: true,
+      })
+      .click();
+    await expect(events).toHaveCount(0);
+    await expect(page.getByRole("status")).toContainText(
+      "Star pools to see their swim times together in one calendar.",
+    );
+    await expect(starred).toHaveAttribute("aria-pressed", "true");
+    await page
+      .getByRole("button", { name: "Add to favorites: Špansko", exact: true })
+      .click();
+    await expect(events).toHaveCount(7);
+  });
+}
+
 test("the generated favicon replaces the Next icon and alternatives are downloadable", async ({
   page,
   request,

@@ -72,6 +72,9 @@ const hr = {
   allFacilities: "Svi objekti",
   findPool: "Pronađi bazen",
   favoritePools: "Omiljeni bazeni",
+  starredPools: "Omiljeni bazeni",
+  starredPoolsHelp:
+    "Označi bazene zvjezdicom za zajednički prikaz njihovih termina u kalendaru.",
   otherPools: "Ostali bazeni",
   addFavorite: "Dodaj u omiljene:",
   removeFavorite: "Ukloni iz omiljenih:",
@@ -176,6 +179,9 @@ const en: typeof hr = {
   allFacilities: "All facilities",
   findPool: "Find a pool",
   favoritePools: "Favorite pools",
+  starredPools: "Starred pools",
+  starredPoolsHelp:
+    "Star pools to see their swim times together in one calendar.",
   otherPools: "Other pools",
   addFavorite: "Add to favorites:",
   removeFavorite: "Remove from favorites:",
