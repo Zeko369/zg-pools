@@ -8,6 +8,8 @@ import type { DaySchedule, PoolType } from "@/lib/ai";
 import { poolColorStyle } from "@/lib/pool-colors";
 import { areaName, sourceText } from "@/lib/i18n";
 import { useLanguage } from "./language-provider";
+import { minuteOfDay, type ZagrebTime } from "@/lib/dates";
+import { cn } from "@/lib/utils";
 export function dayOf(
   result: PoolResult | undefined,
   date: string,
@@ -43,6 +45,7 @@ export function AgendaView({
   catalog,
   results,
   date,
+  now,
   loading,
   type,
   favorites,
@@ -51,12 +54,14 @@ export function AgendaView({
   catalog: Pool[];
   results: PoolResult[];
   date: string;
+  now: ZagrebTime | null;
   loading: boolean;
   type: PoolType | "all";
   favorites: string[];
   onToggleFavorite: (id: string) => void;
 }) {
   const { language, t } = useLanguage();
+  const isToday = now?.date === date.split(".").reverse().join("-");
   return (
     <section className="agenda-list" aria-label={t.agendaRegion}>
       {catalog.map((pool, i) => {
@@ -105,21 +110,36 @@ export function AgendaView({
                         {t.poolTypes[group.poolType]}
                       </span>
                       <div className="time-pills">
-                        {group.slots.map((slot, index) => (
-                          <span
-                            className="time-pill"
-                            style={poolColorStyle(pool.color)}
-                            key={index}
-                          >
-                            <Clock3 size={13} />
-                            {slot.hours}
-                            {slot.lanes && (
-                              <small>
-                                {sourceText(slot.lanes, slot.lanesEn, language)}
-                              </small>
-                            )}
-                          </span>
-                        ))}
+                        {group.slots.map((slot, index) => {
+                          const [start, end] = slot.hours
+                            .split(" - ")
+                            .map(minuteOfDay);
+                          const active =
+                            now !== null &&
+                            isToday &&
+                            now.minutes >= start &&
+                            now.minutes < end;
+                          return (
+                            <span
+                              className={cn(
+                                "time-pill",
+                                active && "time-pill-active",
+                              )}
+                              aria-current={active ? "time" : undefined}
+                              style={poolColorStyle(pool.color)}
+                              key={index}
+                            >
+                              <Clock3 size={13} />
+                              {slot.hours}
+                              {active && <em className="time-pill-now">{t.now}</em>}
+                              {slot.lanes && (
+                                <small>
+                                  {sourceText(slot.lanes, slot.lanesEn, language)}
+                                </small>
+                              )}
+                            </span>
+                          );
+                        })}
                       </div>
                     </div>
                   ))
