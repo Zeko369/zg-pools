@@ -30,7 +30,7 @@ import { revalidatePools } from "@/lib/actions";
 import type { Pool } from "@/lib/pools";
 import type { PoolResult } from "@/lib/data";
 import type { PoolType } from "@/lib/ai";
-import { parseDate, zagrebDate, type WeekInfo } from "@/lib/dates";
+import { parseDate, type WeekInfo } from "@/lib/dates";
 import { AgendaView, dayOf } from "./schedule-views";
 import {
   areaName,
@@ -48,6 +48,7 @@ import { CalendarView, type CalendarSlot } from "./calendar-view";
 import { poolColorStyle } from "@/lib/pool-colors";
 import { useFavoritePools } from "./use-favorite-pools";
 import { FavoriteButton } from "./favorite-button";
+import { useZagrebTime } from "./use-zagreb-time";
 
 type Mode = "calendar" | "agenda";
 const scheduleCache = new Map<
@@ -105,7 +106,8 @@ export function PoolDashboard({
   canRefresh: boolean;
 }) {
   const { language, t } = useLanguage();
-  const [today, setToday] = useState(initialToday);
+  const now = useZagrebTime();
+  const today = now?.date ?? initialToday;
   const [results, setResults] = useState<PoolResult[]>([]),
     [loading, setLoading] = useState(true);
   const params = useSearchParams();
@@ -183,7 +185,6 @@ export function PoolDashboard({
               ...previous.filter((item) => item.pool.id !== pool.id),
               result,
             ]);
-            setToday(zagrebDate());
           }
         }),
       ).finally(() => {
@@ -210,7 +211,6 @@ export function PoolDashboard({
       rememberResults(data);
       setResults(data);
       setSelectedSlot(null);
-      setToday(zagrebDate());
       setNotice(
         data.some((r) => !r.data || r.data.stale)
           ? "partialRefresh"
@@ -541,6 +541,7 @@ export function PoolDashboard({
               week={week}
               type={type}
               today={today}
+              now={now}
               focusDate={activeDate}
               loading={loading}
             />
@@ -549,6 +550,7 @@ export function PoolDashboard({
               catalog={visible}
               results={results}
               date={activeDate.split("-").reverse().join(".")}
+              now={now}
               loading={loading}
               type={type}
               favorites={favorites}

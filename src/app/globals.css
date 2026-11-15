@@ -86,6 +86,7 @@
   --water-soft: #e7f8f5;
   --surface-subtle: #f4f7f9;
   --surface-today: #f5fcfa;
+  --current-time: #dc3545;
   --calendar-grid: #ecf0f4;
   --selected-background: #0b786e;
   --selected-foreground: #fff;
@@ -161,6 +162,7 @@
   --water-soft: #173b3c;
   --surface-subtle: #142238;
   --surface-today: #112c33;
+  --current-time: #ff7b86;
   --calendar-grid: #233349;
   --selected-background: #53d9cf;
   --selected-foreground: #0d1726;
@@ -531,6 +533,40 @@ input:focus-visible {
   position: relative;
   border-left: 1px solid var(--line);
 }
+.calendar-now {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--current-time);
+  color: var(--current-time);
+  z-index: 61;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.calendar-now::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  transform: translateY(-50%);
+}
+.calendar-now > span {
+  position: absolute;
+  right: 3px;
+  bottom: 5px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--background);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
 .swim-event {
   position: absolute;
   border-radius: 5px;
@@ -863,6 +899,17 @@ input:focus-visible {
 .time-pill small {
   width: 100%;
   font-size: 9px;
+}
+.time-pill-active {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 65%, transparent);
+  background: color-mix(in srgb, var(--tone) 10%, var(--tint));
+}
+.time-pill-now {
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 .day-reason {
   font-size: 11px;

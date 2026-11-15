@@ -29,6 +29,24 @@ export function zagrebDate(now = new Date()): string {
     day: "2-digit",
   }).format(now);
 }
+export interface ZagrebTime {
+  date: string;
+  minutes: number;
+  label: string;
+}
+export function minuteOfDay(time: string): number {
+  const [hours, minutes] = time.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+export function zagrebTime(now = new Date()): ZagrebTime {
+  const label = new Intl.DateTimeFormat("en-GB", {
+    timeZone: TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(now);
+  return { date: zagrebDate(now), minutes: minuteOfDay(label), label };
+}
 export function formatDate(date: Date) {
   return `${String(date.getUTCDate()).padStart(2, "0")}.${String(date.getUTCMonth() + 1).padStart(2, "0")}.${date.getUTCFullYear()}`;
 }

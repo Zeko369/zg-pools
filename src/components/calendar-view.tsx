@@ -4,7 +4,12 @@ import { X, ExternalLink, Clock3, Layers } from "lucide-react";
 import type { Pool } from "@/lib/pools";
 import type { PoolResult } from "@/lib/data";
 import type { PoolType } from "@/lib/ai";
-import { parseDate, type WeekDates } from "@/lib/dates";
+import {
+  minuteOfDay,
+  parseDate,
+  type WeekDates,
+  type ZagrebTime,
+} from "@/lib/dates";
 import { overlapPlacement } from "@/lib/calendar-layout";
 import { poolColorStyle } from "@/lib/pool-colors";
 import { dayOf, StateLabel } from "./schedule-views";
@@ -23,16 +28,13 @@ export interface CalendarSlot {
   reason?: string;
   reasonEn?: string;
 }
-function toMinute(time: string) {
-  const [h, m] = time.split(":").map(Number);
-  return h * 60 + m;
-}
 export function CalendarView({
   pools,
   results,
   week,
   type,
   today,
+  now,
   focusDate,
   loading,
   overlap,
@@ -48,6 +50,7 @@ export function CalendarView({
   week: WeekDates;
   type: PoolType | "all";
   today: string;
+  now: ZagrebTime | null;
   focusDate: string;
   loading: boolean;
   overlap: boolean;
@@ -87,7 +90,7 @@ export function CalendarView({
     slots: slotsForDay(info.date, info.name),
   }));
   const intervals = days.flatMap((day) =>
-    day.slots.map((slot) => slot.hours.split(" - ").map(toMinute)),
+    day.slots.map((slot) => slot.hours.split(" - ").map(minuteOfDay)),
   );
   const start =
     Math.floor(Math.min(360, ...intervals.map((i) => i[0])) / 60) * 60;
@@ -215,7 +218,7 @@ export function CalendarView({
                   key={info.date}
                 >
                   {info.slots.map((slot) => {
-                    const [from, to] = slot.hours.split(" - ").map(toMinute);
+                    const [from, to] = slot.hours.split(" - ").map(minuteOfDay);
                     const y = Math.max(start, from),
                       bottom = Math.min(end, to);
                     if (bottom <= y) return null;
@@ -267,6 +270,21 @@ export function CalendarView({
                       </button>
                     );
                   })}
+                  {now &&
+                    parseDate(info.date).toISOString().slice(0, 10) === now.date &&
+                    now.minutes >= start &&
+                    now.minutes < end && (
+                      <div
+                        className="calendar-now"
+                        role="img"
+                        aria-label={`${t.now} · ${now.label} · ${t.zagrebTime}`}
+                        style={{
+                          top: `${((now.minutes - start) / (end - start)) * 100}%`,
+                        }}
+                      >
+                        <span aria-hidden="true">{now.label}</span>
+                      </div>
+                    )}
                   {!info.slots.length && (
                     <div className="no-event">
                       <StateLabel
